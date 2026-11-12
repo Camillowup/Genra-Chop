@@ -7,11 +7,11 @@
   "author": "Bastian Ofner",
   "authorEmail": "",
   "authorUrl": "https://github.com/Camillowup",
-  "pluginUrl": "https://github.com/Camillowup/testmodulesvcv",
-  "manualUrl": "https://github.com/Camillowup/testmodulesvcv/blob/main/genra-chop/README.md",
-  "sourceUrl": "https://github.com/Camillowup/testmodulesvcv",
+  "pluginUrl": "https://github.com/Camillowup/Genra-Chop",
+  "manualUrl": "https://github.com/Camillowup/Genra-Chop/blob/main/README.md",
+  "sourceUrl": "https://github.com/Camillowup/Genra-Chop",
   "donateUrl": "",
-  "changelogUrl": "",
+  "changelogUrl": "https://github.com/Camillowup/Genra-Chop/blob/main/CHANGELOG.md",
   "modules": [
     {
       "slug": "GenraChop",

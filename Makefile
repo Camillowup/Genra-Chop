@@ -1,6 +1,6 @@
-# GENRA CHOP: its own plugin (slug GenraChop) in GENRA Test's repo. Build:
+# GENRA CHOP: a VCV Rack 2 plugin (slug GenraChop). Build:
 #   make RACK_DIR=/path/to/Rack-SDK dist
-# Self-contained: no parts fetched from the GENRA repo (its own knobs, its own look).
+# Self-contained: nothing to fetch (its own knobs, its own look; WARP's libraries are in dep/).
 RACK_DIR ?= ../..
 
 SOURCES += $(wildcard src/*.cpp)

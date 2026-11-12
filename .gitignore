@@ -1,0 +1,8 @@
+build/
+dist/
+sdk/
+plugin.so
+plugin.dll
+plugin.dylib
+*.exe
+__pycache__/

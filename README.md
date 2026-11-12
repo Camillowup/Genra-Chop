@@ -1,8 +1,8 @@
 # GENRA CHOP
 
 Ein Hip-Hop-Beat-Generator im Look einer alten Production Center (beiges Gehäuse, graue Pads, Akai-Rot, grünes LCD).
-Eigenes Plugin (**GENRA CHOP**, Slug `GenraChop`; bis 2.1.0 hiess es GENRA HipHop) unter der Marke **Genra**, liegt
-im Repo von GENRA Test im Unterordner `genra-chop/`. Vier Module in einer Datei: **GENRA CHOP** (38 HP),
+Eigenes Plugin (**GENRA CHOP**, Slug `GenraChop`; bis 2.1.0 hiess es GENRA HipHop, bis 2.4.0 lag es im Repo von
+GENRA Test) unter der Marke **Genra**. Vier Module in einer Datei: **GENRA CHOP** (38 HP),
 **GENRA CHOP GRID** (der Grid-Editor, 44 HP), ab 2.2.0 **GENRA CHOP ABLAUF** (der Song-Arranger, 26 HP) und ab 2.3.0
 **GENRA CHOP FX** (zwei Effekt-Busse zum Live-Spielen nach Vorbild SP-404, 36 HP).
 Patches mit dem alten GENRA HipHop laden nicht mehr (neuer Slug).
@@ -14,6 +14,22 @@ Patches mit dem alten GENRA HipHop laden nicht mehr (neuer Slug).
 Unter **Actions** den letzten erfolgreichen Lauf öffnen, Artefakt **genra-chop-windows** herunterladen (Mac:
 **genra-chop-mac-…**, nur über Actions › Run workflow), die `.vcvplugin`-Datei in den Plugin-Ordner im
 Rack-Benutzerordner legen (Rack › Help › Open user folder) und Rack neu starten.
+
+## Selbst bauen
+
+Mit dem [VCV Rack SDK](https://vcvrack.com/manual/PluginDevelopmentTutorial) (Rack 2, unter Windows in MSYS2 MINGW64):
+
+```
+make RACK_DIR=/pfad/zum/Rack-SDK dist
+```
+
+Das fertige Plugin liegt dann in `dist/`. Nichts muss nachgeladen werden; die Bibliotheken für WARP liegen in `dep/`.
+Die Engine-Tests laufen ohne Rack (siehe `.github/workflows/build.yml`).
+
+## Lizenz
+
+GPL-3.0 (`LICENSE`). Fremder Code: Rubber Band Library (GPL-2.0-or-later) und Signalsmith Stretch / Linear (MIT),
+Herkunft und Lizenztexte in `licenses/`.
 
 ## Bedienung
 
