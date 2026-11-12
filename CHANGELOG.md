@@ -22,6 +22,7 @@ Was in welcher Version dazukam (neueste zuerst). Bis 2.4.0 lag GENRA CHOP im Rep
   LOW CUT und HIGH CUT (39). 2.3.0-Patches mit GENRA CHOP FX laden die Kabel nicht mehr richtig.
 - **GENRA CHOP ABLAUF:** die Hinweiszeile unter den Pads passt in ihr Feld; Pads per Drag & Drop in die Song-Liste
   (rote Linie zeigt die Stelle), Zeilen per Ziehen verschieben, Scrollbalken und Auto-Scroll am Rand.
+- **Mac:** Rubber Band baut auch auf macOS (dort ohne `sincos`).
 - **Fremder Code:** Rubber Band Library 4.0.0 (GPL-2.0-or-later) und Signalsmith Stretch / Linear (MIT) in `dep/`,
   Herkunft und Lizenzen in `licenses/`.
 

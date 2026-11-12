@@ -7,4 +7,8 @@
 #define NO_TIMING 1
 #define NO_THREADING 1
 #define NO_THREAD_CHECKS 1
+#if defined(__APPLE__)
+// macOS has no sincos()/sincosf() (only __sincos), so use plain sin/cos there.
+#define LACK_SINCOS 1
+#endif
 #include "../../dep/rubberband/single/RubberBandSingle.cpp"
