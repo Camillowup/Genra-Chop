@@ -42,7 +42,7 @@ jobs:
         run: |
           VER=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' plugin.json)
           echo "Version $VER"
-          make RACK_DIR=sdk/Rack-SDK VERSION=$VER -j4 dist
+          make RACK_DIR=sdk/Rack-SDK SLUG=GenraChop VERSION=$VER -j4 dist
 
       - name: Check the package
         run: |
@@ -91,7 +91,7 @@ jobs:
       - name: Build
         run: |
           VER=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' plugin.json)
-          make RACK_DIR=$GITHUB_WORKSPACE/sdk/Rack-SDK VERSION=$VER -j4 dist
+          make RACK_DIR=$GITHUB_WORKSPACE/sdk/Rack-SDK SLUG=GenraChop VERSION=$VER -j4 dist
           ls dist/*.vcvplugin
 
       - uses: actions/upload-artifact@v4

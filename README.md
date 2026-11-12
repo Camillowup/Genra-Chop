@@ -20,7 +20,7 @@ Rack-Benutzerordner legen (Rack › Help › Open user folder) und Rack neu star
 Mit dem [VCV Rack SDK](https://vcvrack.com/manual/PluginDevelopmentTutorial) (Rack 2, unter Windows in MSYS2 MINGW64):
 
 ```
-make RACK_DIR=/pfad/zum/Rack-SDK dist
+make RACK_DIR=/pfad/zum/Rack-SDK SLUG=GenraChop dist
 ```
 
 Das fertige Plugin liegt dann in `dist/`. Nichts muss nachgeladen werden; die Bibliotheken für WARP liegen in `dep/`.
