@@ -1,7 +1,8 @@
-name: Attach builds to a release
+name: Make release
 
-# By hand only (Actions › Run workflow): takes the .vcvplugin files of a finished build run
-# and attaches them to an existing release. Nothing is built again.
+# By hand only (Actions › Make release › Run workflow): takes the .vcvplugin files of a finished
+# build run, makes the release (notes from .github/release-notes/<tag>.md) and attaches them.
+# Nothing is built again. If the release already exists, the files are only added/replaced.
 on:
   workflow_dispatch:
     inputs:
@@ -17,9 +18,11 @@ permissions:
   actions: read
 
 jobs:
-  attach:
+  release:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           run-id: ${{ inputs.run_id }}
@@ -28,9 +31,22 @@ jobs:
           merge-multiple: true
           path: dist
 
-      - name: Upload to the release
+      - name: Make the release and attach the files
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          RUN: ${{ inputs.run_id }}
         run: |
           ls -la dist
-          gh release upload "${{ inputs.tag }}" dist/*.vcvplugin --clobber -R "${{ github.repository }}"
+          R="${{ github.repository }}"
+          if ! gh release view "$TAG" -R "$R" >/dev/null 2>&1; then
+            SHA=$(gh api "repos/$R/actions/runs/$RUN" --jq .head_sha)
+            NOTES=".github/release-notes/$TAG.md"
+            VER="${TAG#v}"
+            if [ -f "$NOTES" ]; then
+              gh release create "$TAG" -R "$R" --target "$SHA" --title "GENRA CHOP $VER" --notes-file "$NOTES"
+            else
+              gh release create "$TAG" -R "$R" --target "$SHA" --title "GENRA CHOP $VER" --notes ""
+            fi
+          fi
+          gh release upload "$TAG" dist/*.vcvplugin --clobber -R "$R"
