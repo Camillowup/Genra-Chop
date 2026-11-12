@@ -1,0 +1,36 @@
+name: Attach builds to a release
+
+# By hand only (Actions › Run workflow): takes the .vcvplugin files of a finished build run
+# and attaches them to an existing release. Nothing is built again.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "ID of the finished build run"
+        required: true
+      tag:
+        description: "Release tag, e.g. v2.4.0"
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: genra-chop-*
+          merge-multiple: true
+          path: dist
+
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ls -la dist
+          gh release upload "${{ inputs.tag }}" dist/*.vcvplugin --clobber -R "${{ github.repository }}"
