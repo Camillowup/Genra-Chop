@@ -84,6 +84,13 @@ Controller nichts).
   halb oder doppelt erkannt wurde. Oben rechts im Wellenform-Fenster **RUBBER | SIGNAL**: welches Stretching TONE
   nimmt (Rubber Band R3: beste Qualität, etwa 1 s Rechenzeit für 6 s Sample; Signalsmith Stretch: schneller). Ändert
   sich BPM, wird nach einer kurzen Pause neu gewarpt (im Hintergrund, die Chops und das Pattern bleiben).
+- **LOOP** (ab 2.5.0, rechts in der WARP-Leiste): das ganze Sample läuft als Loop im Takt statt des Chop-Patterns.
+  Es startet mit PLAY auf Takt 1 und beginnt nach jeder LOOP-Länge neu; sein Tempo passt immer genau auf diese Länge,
+  so läuft es nie vom Beat weg. LOOP schaltet WARP mit ein. Das Feld daneben: die Länge, **AUTO** (aus der Länge des
+  Samples beim laufenden Tempo, 1, 2, 4, 8 oder 16 Takte) oder von Hand. Das Chop-Pattern pausiert, solange LOOP an
+  ist, die Pads bleiben darüber spielbar. LOOP wird mit dem Pattern gespeichert: GENRA CHOP ABLAUF merkt es sich pro
+  Pad, ein Teil kann also loopen und der nächste choppen. Im Wellenform-Fenster steht „LOOP 4 BARS“, eine Linie zeigt,
+  wo der Loop gerade ist.
 - **REC:** was du auf den Pads spielst (Maus oder MIDI), landet auf dem nächsten Schritt in der Chop-Spur (ein
   UNDO-Schritt pro Aufnahme).
 - **CLEAR:** kurz drücken = das ganze Chop-Pattern leer (Sample, Chops und die anderen Spuren bleiben). **CLEAR
@@ -104,6 +111,10 @@ Akkorde bleiben; NEW oder NEW ALL füllt sie wieder.
   Snare, Hats … verteilt und von den Drum-Hits gespielt (Ausgang BRK L/R). Ab 2.4.0 bringt **DENS** nach rechts
   stiltypische Extras auf Stimmen, die der Stil leer lässt: Rim-Ghosts, Tamburin/Shaker auf PERC (bei Trap
   synkopiert), offene Hats bei Funk und Trap, Clap auf der Snare, ein Tom-Fill am Ende von Takt 4.
+  Ab 2.5.0 kommen die **Hi-Hats** früh (ab etwa 30–40 %: Boom Bap bekommt leise Ghost-Hats zwischen den Achteln, Trap seine 16tel und Rolls früher, eine offene Hat vor Takt 1 öfter); der **Clap** kommt nur noch ab
+  und zu (auf Takt 2 und / oder 4, ab etwa 80 %; Stile mit eigenem Clap behalten ihn); das **Tamburin** seltener und
+  leiser (ab etwa 75 %). Bei BREAK und BOTH spielen Clap, Rim und PERC keine snareähnlichen Break-Stücke mehr, sondern
+  hellere, hat-artige Stücke oder gar nichts.
 - **BASS:** FOLLOW (Stil, folgt den Akkorden der Chops), ROOT+5, WALK, 808. **OCT** statt CHOP (kein MIDI-Chop).
   DENS ganz links: nur die Grundtöne (mindestens zwei pro Takt); nach rechts kommen Vorschläge vor der Snare,
   Oktavsprünge, Läufe in den nächsten Akkord und 16tel-Ghosts dazu. Die Grundtöne klingen bis kurz vor den nächsten
@@ -200,6 +211,8 @@ Ein Sample pro Song: die Pads speichern Patterns, keine Samples.
   belegt sind). **UNDO** holt beides zurück. Beide per MIDI learn steuerbar.
 - **SONG:** die Song-Liste (Zeile: Pattern, Takte, F = Übergang am Ende). Klick wählt, Mausrad blättert, Rechtsklick:
   Takte, Übergang an/aus, Pattern = gewähltes Pad, hoch/runter, duplizieren, löschen. Unten: Takte und Spieldauer.
+  Ab 2.5.0: ein Pad merkt sich, ob GENRA CHOP **LOOP** spielt (ein rotes **L** oben rechts auf dem Pad); Rechtsklick
+  auf ein Pad › **LOOP** schaltet es für dieses Pad um. So kann ein Song im Intro loopen und im Verse choppen.
   Ab 2.4.0: **ein Pad in die Liste ziehen** fügt es dort ein (eine rote Linie zeigt die Stelle), **eine Zeile ziehen**
   verschiebt sie. Bei langen Songs ein **Scrollbalken** rechts (klicken oder ziehen); beim Ziehen an den oberen oder
   unteren Rand scrollt die Liste von selbst.

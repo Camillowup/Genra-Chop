@@ -215,6 +215,10 @@ struct HHWave : widget::OpaqueWidget {
 			nvgFillColor(vg, C_YELLOW);
 			nvgFill(vg);
 		}
+		// LOOP: the window says so (the line shows where the loop is)
+		if (module->loopPub.load())
+			label(vg, uiBold(), 4.f, h - 5.f, string::f("LOOP  %d BAR%s", module->loopBarsPub.load(), module->loopBarsPub.load() > 1 ? "S" : ""), 7.f,
+			      C_YELLOW, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
 		for (int p = 0; p < c->info.count; p++) {
 			float x = total ? w * c->start[p] / total : 0.f;
 			nvgBeginPath(vg);
@@ -241,6 +245,24 @@ struct HHBars : widget::Widget {
 };
 
 /** WARP's tempo: the sample's (found, x2 / /2) > the beat's; while working "WARPING". */
+/** LOOP's length: a field whose text shrinks to fit (it is narrow). */
+struct LoopBarsField : HHField {
+	void draw(const DrawArgs& args) override {
+		if (learning && learning())
+			learnRing(args.vg, box.size.x, box.size.y);
+		labelFit(args.vg, uiBold(), 4.f, box.size.y / 2 + 0.5f, value ? value() : "", 9.f, box.size.x - 12.f, C_CREAM,
+		         NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+		float x = box.size.x - 6.f, y = box.size.y / 2;
+		nvgBeginPath(args.vg);
+		nvgMoveTo(args.vg, x - 2.6f, y - 1.3f);
+		nvgLineTo(args.vg, x + 2.6f, y - 1.3f);
+		nvgLineTo(args.vg, x, y + 1.7f);
+		nvgClosePath(args.vg);
+		nvgFillColor(args.vg, C_RED);
+		nvgFill(args.vg);
+	}
+};
+
 struct WarpBpm : widget::Widget {
 	GenraChop* module = nullptr;
 	void draw(const DrawArgs& args) override {
@@ -587,6 +609,42 @@ struct GenraChopWidget : ModuleWidget, ml::LearnHost {
 				m->rewarp();
 		});
 		learnButton(d2, "warpd2", "WARP /2");
+		// LOOP (from 2.5.0): the whole sample loops in time (switches WARP on); the length next to it
+		HHButton* lp = button(hhl::LOOP, "LOOP", nvgRGB(0x55, 0x53, 0x4f), [=]() {
+			if (!m)
+				return;
+			bool on = !m->loopPub.load();
+			m->reqLoop = on ? 1 : 2;
+			m->loopPub = on;
+			if (on && !m->warpOn) {
+				m->warpOn = true;
+				m->rewarp();
+			}
+		});
+		lp->colOf = [=]() { return m && m->loopPub.load() ? C_RED : nvgRGB(0x55, 0x53, 0x4f); };
+		learnButton(lp, "loop", "LOOP");
+		LoopBarsField* lb = at<LoopBarsField>(hhl::LBARS);
+		static const int LB[6] = {0, 1, 2, 4, 8, 16};
+		lb->count = []() { return 6; };
+		lb->current = [=]() {
+			for (int i = 0; i < 6; i++)
+				if (m && LB[i] == m->loopBars)
+					return i;
+			return 0;
+		};
+		lb->item = [](int i) { return i == 0 ? std::string("AUTO (from the sample's length)") : string::f("%d bar%s", LB[i], LB[i] > 1 ? "s" : ""); };
+		lb->value = [=]() {
+			if (!m)
+				return std::string("AUTO 4");
+			if (m->loopBars == 0)
+				return string::f("AUTO %d", m->loopBarsPub.load() > 0 ? m->loopBarsPub.load() : 4);
+			return string::f("%d BAR", m->loopBars);
+		};
+		lb->choose = [=](int i) {
+			if (m)
+				m->loopBars = LB[i];
+		};
+		learnField(lb, "loopbars", "LOOP length");
 		for (int e = 0; e < hhw::NUM_ENGINES; e++) {
 			float r[4] = {hhl::WALGO[0] + e * hhl::WALGO[2] / 2.f + (e ? 0.6f : 0.f), hhl::WALGO[1], hhl::WALGO[2] / 2.f - 0.6f,
 			              hhl::WALGO[3]};

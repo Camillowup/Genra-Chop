@@ -139,12 +139,15 @@ comp("NEWALL", 56.2, 83.6, 39.8, 6.6)
 # ---------------------------------------------------------------- right: the waveform, the four tracks
 rect(99, 15, 90, 24.4, GRAPH, 1.2)
 comp("WAVE", 100.2, 16.2, 87.6, 15.6)
-# WARP: on/off, how, the tempo (sample > beat), x2 / /2; the stretcher top right in the waveform
-comp("WARP", 100.6, 32.4, 14.0, 5.6)
-comp("WMODE", 115.6, 32.4, 22.0, 5.6)
-comp("WBPM", 139.0, 32.4, 30.0, 5.6)
-comp("WX2", 170.0, 32.4, 8.4, 5.6)
-comp("WD2", 179.0, 32.4, 8.4, 5.6)
+# WARP: on/off, how, the tempo (sample > beat), x2 / /2; then LOOP (the whole sample in time) and its length in bars;
+# the stretcher top right in the waveform
+comp("WARP", 100.6, 32.4, 11.2, 5.6)
+comp("WMODE", 112.4, 32.4, 16.2, 5.6)
+comp("WBPM", 129.2, 32.4, 20.6, 5.6)
+comp("WX2", 150.4, 32.4, 6.8, 5.6)
+comp("WD2", 157.8, 32.4, 6.8, 5.6)
+comp("LOOP", 165.4, 32.4, 10.0, 5.6)
+comp("LBARS", 176.0, 32.4, 11.8, 5.6)
 comp("WALGO", 164.6, 17.0, 22.6, 4.4)
 TRACKS = (("DRUMS", "DENS", "CHOP"), ("BASS", "DENS", "OCT"), ("MELODY", "DENS", "CHOP"), ("PADS", "DENS", "CHOP"))
 CW, CG = 21.6, 1.2
@@ -273,7 +276,7 @@ print(f"res/GenraChop.svg: {HP} HP, {len(comps)} parts")
 # ---------------------------------------------------------------- preview (python3 tools/chop_panel.py --preview x.png)
 if "--preview" in sys.argv:
     out.clear()
-    LABELS = {"SPLAY": "SAMPLE", "WARP": "WARP", "WX2": "x2", "WD2": "/2", "LOAD": "LOAD SAMPLE", "CLEAR": "CLEAR", "REC": "REC", "LOCK": "LOCK", "ROOT": "ROOT", "UNDO": "UNDO", "SAVE": "SAVE",
+    LABELS = {"SPLAY": "SAMPLE", "WARP": "WARP", "WX2": "x2", "WD2": "/2", "LOOP": "LOOP", "LOAD": "LOAD SAMPLE", "CLEAR": "CLEAR", "REC": "REC", "LOCK": "LOCK", "ROOT": "ROOT", "UNDO": "UNDO", "SAVE": "SAVE",
               "NEWALL": "NEW ALL", "PLAY": "PLAY", "STOP": "STOP"}
     CHORDS = ["F#m7", "Bm9", "Dmaj", "C#7", "F#m", "Am7", "E", "Bm"]
     for k, v in comps.items():
@@ -300,7 +303,7 @@ if "--preview" in sys.argv:
                 e(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="0.6" fill="{RED if i == 0 else GRAPH}"/>')
                 text(x + w / 2, y + h / 2 + 0.55, "ABCD"[i], 1.5, CREAM, 700, check=False)
             elif k in LABELS:
-                col = RED if k in ("REC", "NEWALL", "PLAY") else (YELLOW if k in ("LOAD", "SPLAY") else ("#55534f" if k in ("WARP", "WX2", "WD2") else GRAPH))
+                col = RED if k in ("REC", "NEWALL", "PLAY") else (YELLOW if k in ("LOAD", "SPLAY") else ("#55534f" if k in ("WARP", "WX2", "WD2") else (RED if k == "LOOP" else GRAPH)))
                 e(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="0.8" fill="{col}"/>')
                 text(x + w / 2, y + h / 2 + 0.7, LABELS[k], 1.7, "#2a2416" if k in ("LOAD", "SPLAY") else CREAM, 700, check=False)
             elif k.startswith("TCLR"):
@@ -315,9 +318,12 @@ if "--preview" in sys.argv:
             elif k == "WMODE":
                 e(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="0.8" fill="#55534f"/>')
                 text(x + 1.5, y + h / 2 + 0.6, "AUTO  v", 1.6, CREAM, 700, "start", check=False)
+            elif k == "LBARS":
+                e(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="0.8" fill="#55534f"/>')
+                text(x + 1.2, y + h / 2 + 0.6, "AUTO 4 v", 1.45, CREAM, 700, "start", check=False)
             elif k == "WBPM":
                 e(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="0.6" fill="{LCD}"/>')
-                text(x + w / 2, y + h / 2 + 0.7, "87 > 92 BPM", 1.8, "#24301a", 700, check=False)
+                text(x + w / 2, y + h / 2 + 0.7, "87 > 92 BPM", 1.6, "#24301a", 700, check=False)
             elif k.startswith("TNEW"):
                 e(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="0.8" fill="{RED}"/>')
                 text(x + w / 2, y + h / 2 + 0.7, "NEW", 1.7, CREAM, 700, check=False)

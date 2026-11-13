@@ -1010,6 +1010,9 @@ void APad::draw(const DrawArgs& args) {
 		nvgFillColor(vg, FAMILY_COL[((sl->family % 8) + 8) % 8]);
 		nvgFill(vg);
 		label(vg, uiBold(), box.size.x / 2, box.size.y / 2 + 2.f, sl->name, 7.f, C_INK);
+		// LOOP stored with the pattern: this pad plays the sample as a loop (GENRA CHOP's LOOP)
+		if (sl->pat.loop)
+			label(vg, uiBold(), box.size.x - 3.f, 10.f, "L", 6.5f, C_RED, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
 		if (sl->part >= 0) {
 			nvgBeginPath(vg);
 			nvgRoundedRect(vg, 6.f, box.size.y - 7.f, box.size.x - 12.f, 2.5f, 1.f);
@@ -1119,6 +1122,12 @@ void APad::onButton(const ButtonEvent& e) {
 						mm->slots[s].part = p;
 					}));
 			}));
+			menu->addChild(createCheckMenuItem("LOOP (the whole sample in time, no chop pattern)", "", [=]() { return mm->slots[s].pat.loop; },
+			                                   [=]() {
+				                                   mm->snapshot();
+				                                   std::lock_guard<std::mutex> lk(mm->dataM);
+				                                   mm->slots[s].pat.loop = !mm->slots[s].pat.loop;
+			                                   }));
 			menu->addChild(createMenuItem("Insert into the song", "", [=]() {
 				mm->selSlot = s;
 				mm->insertRow();

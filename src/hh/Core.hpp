@@ -146,6 +146,7 @@ struct Pattern {
 	float swDrum[DRUMS] = {0, 0, 0, 0, 0, 0, 0, 0};
 	bool edited[NUM_TRACKS] = {false, false, false, false, false}; // fixed notes: DENS leaves them, NEW ALL keeps them
 	bool chordFollow = true; // edited bass / melody / pads move with new chords
+	bool loop = false;       // LOOP: the whole (warped) sample loops in time, the chop pattern rests (ABLAUF keeps it per pad)
 	void clear();
 };
 

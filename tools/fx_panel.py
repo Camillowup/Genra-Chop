@@ -109,6 +109,7 @@ for b in range(NB):
     rect(x0, BY, BW, 5.0, GRAPH, 1.0)
     rect(x0, BY + 2.8, BW, 2.2, GRAPH, 0)
     text(x0 + BW / 2, BY + 3.6, f"BUS {b + 1}", 1.8, CREAM, 700, sp=0.35)
+    rect(x0 + 1.6, BY + 6.6, BW - 3.2, 5.0, GRAPH, 0.6)  # the effect field (the module draws the text)
     comp(f"FX{b}", x0 + 1.6, BY + 6.6, BW - 3.2, 5.0)
     for i in range(3):
         kx = x0 + BW / 2 + (i - 1) * 17.0

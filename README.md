@@ -85,6 +85,13 @@ on the controller).
   Top right in the waveform window, **RUBBER | SIGNAL**: which stretcher TONE uses (Rubber Band R3: best quality, about
   1 s of computation for a 6 s sample; Signalsmith Stretch: faster). If BPM changes, the sample is re-warped after a
   short pause (in the background; the chops and the pattern stay).
+- **LOOP** (from 2.5.0, right in the WARP strip): the whole sample plays as a loop in time instead of the chop
+  pattern. It starts with PLAY on bar 1 and starts again every LOOP length; its speed always fits that length
+  exactly, so it never drifts away from the beat. Switching LOOP on also switches WARP on. The field next to it: the
+  length, **AUTO** (from the sample's length at the tempo playing, 1, 2, 4, 8 or 16 bars) or set by hand. The chop
+  pattern rests while LOOP is on, the pads can still be played on top. LOOP is stored with the pattern: GENRA CHOP
+  ABLAUF keeps it per pad, so one part can loop and the next one chop. The waveform window shows "LOOP 4 BARS" and a
+  line where the loop is.
 - **REC:** what you play on the pads (mouse or MIDI) lands on the next step of the chop track (one UNDO step per
   recording).
 - **CLEAR:** short press = the whole chop pattern empty (sample, chops and the other tracks stay). **Hold CLEAR and
@@ -104,7 +111,11 @@ track, the chords stay; NEW or NEW ALL fills it again.
   beats). Load a break via right-click › Load break: the hits are sorted by brightness onto kick, snare, hats … and are
   played by the drum hits (output BRK L/R). From 2.4.0, turning **DENS** to the right adds style-typical extras on
   voices the style leaves empty: rim ghosts, tambourine/shaker on PERC (syncopated for trap), open hats for funk and
-  trap, clap on the snare, a tom fill at the end of bar 4.
+  trap, clap on the snare, a tom fill at the end of bar 4. From 2.5.0 the **hi-hats** come early (from about 30–40 %:
+  boom bap gets quiet ghost hats between the eighths, trap its 16ths and rolls sooner, an open hat into bar 1 more
+  often); the **clap** only comes now and then (on bar 2 and / or 4, from about 80 %; styles with their own clap
+  keep it); the **tambourine** is rarer and quieter (from about 75 %). In BREAK and BOTH, clap, rim and PERC no longer
+  get snare-like pieces of the break: they take brighter, hat-like pieces, or stay silent.
 - **BASS:** FOLLOW (style, follows the chords of the chops), ROOT+5, WALK, 808. **OCT** instead of CHOP (no MIDI chop).
   DENS fully left: root notes only (at least two per bar); to the right, pickups before the snare, octave jumps, runs
   into the next chord and 16th ghosts are added. Root notes ring until just before the next one (East Coast stays
@@ -205,6 +216,8 @@ green). One sample per song: the pads store patterns, not samples.
 - **SONG:** the song list (row: pattern, bars, F = transition at the end). Click selects, mouse wheel scrolls,
   right-click: bars, transition on/off, pattern = selected pad, up/down, duplicate, delete. At the bottom: bars and
   play time.
+  From 2.5.0: a pad stores whether GENRA CHOP plays **LOOP** (a red **L** top right on the pad); right-click on a pad ›
+  **LOOP** switches it for that pad. So a song can loop the sample in the intro and chop it in the verse.
   From 2.4.0: **drag a pad into the list** to insert it there (a red line shows the spot), **drag a row** to move it.
   Long songs get a **scroll bar** on the right (click or drag); when dragging to the top or bottom edge the list
   scrolls by itself.

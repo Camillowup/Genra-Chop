@@ -1,7 +1,7 @@
 {
   "slug": "GenraChop",
   "name": "GENRA CHOP",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "license": "GPL-3.0-only",
   "brand": "Genra",
   "author": "Bastian Ofner",
@@ -16,7 +16,7 @@
     {
       "slug": "GenraChop",
       "name": "GENRA CHOP",
-      "description": "A hip-hop beat generator in the look of an old production center: 29 styles from the 80s to the 2020s (Boom Bap to Trap), drums, bass, melody and pads, a sample chopped onto 16 playable pads with its chords and key found, a break chopped onto the drums, MIDI chop per track, MIDI learn for every control, MIDI export and the chops saved as WAVs",
+      "description": "A hip-hop beat generator in the look of an old production center: 29 styles from the 80s to the 2020s (Boom Bap to Trap), drums, bass, melody and pads, a sample chopped onto 16 playable pads with its chords and key found (or looped whole, in time), a break chopped onto the drums, MIDI chop per track, MIDI learn for every control, MIDI export and the chops saved as WAVs",
       "tags": [
         "Sequencer",
         "Sampler",

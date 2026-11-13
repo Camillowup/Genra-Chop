@@ -436,11 +436,14 @@ void analyse(ChopSet& cs, int mode, int count) {
 		cs.voicePad[KICK] = order[0];
 		cs.voicePad[TOM] = order[std::min(n - 1, 1)];
 		cs.voicePad[SNARE] = order[n / 2];
-		cs.voicePad[CLAP] = order[std::min(n - 1, n / 2 + 1)];
-		cs.voicePad[RIM] = order[std::max(0, n / 2 - 1)];
 		cs.voicePad[CH] = order[n - 1];
 		cs.voicePad[OH] = order[std::max(0, n - 2)];
-		cs.voicePad[PERC] = order[std::max(0, n - 3)];
+		// PERC, CLAP and RIM take the next bright (hat-like) pieces, never snare-like ones from the middle:
+		// a piece has to be clearly brighter than the snare, otherwise the voice stays silent in the break
+		int minIdx = n / 2 + std::max(1, n / 8);
+		cs.voicePad[PERC] = n - 3 >= minIdx ? order[n - 3] : -1;
+		cs.voicePad[CLAP] = n - 4 >= minIdx ? order[n - 4] : -1;
+		cs.voicePad[RIM] = n - 5 >= minIdx ? order[n - 5] : -1;
 	}
 }
 

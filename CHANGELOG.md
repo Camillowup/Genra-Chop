@@ -3,6 +3,19 @@
 Was in welcher Version dazukam (neueste zuerst). Bis 2.4.0 lag GENRA CHOP im Repo von GENRA Test
 (`Camillowup/testmodulesvcv`, Ordner `genra-chop/`, davor als GENRA HipHop).
 
+### GENRA CHOP 2.5.0
+- **GENRA CHOP:**
+  - **LOOP** (rechts in der WARP-Leiste): das ganze Sample läuft als Loop im Takt (Start bei Takt 1, neu nach jeder
+    LOOP-Länge, Tempo genau auf die Länge, schaltet WARP mit ein); daneben die Länge AUTO / 1 / 2 / 4 / 8 / 16 Takte.
+    Das Chop-Pattern pausiert, die Pads bleiben spielbar; „LOOP n BARS“ und Laufzeile im Wellenform-Fenster. LOOP wird
+    mit dem Pattern gespeichert. WARP-Leiste dafür schmaler eingeteilt.
+  - **Drums / DENS:** Hi-Hats früher und mehr (Ghost-Hats ab etwa 30–40 %, Trap-16tel und Rolls früher, offene Hat vor
+    Takt 1 öfter); Clap-Layer nur noch ab und zu (Takt 2 / 4, ab etwa 80 %); Tamburin seltener und leiser (ab etwa
+    75 %). Kick, Snare, Rim-Ghosts und Tom-Fill unverändert.
+  - **Break (BREAK / BOTH):** Clap, Rim und PERC bekommen keine snareähnlichen Stücke mehr, sondern hellere oder keine.
+- **GENRA CHOP ABLAUF:** jedes Pad merkt sich LOOP (rotes **L** auf dem Pad), Rechtsklick › LOOP schaltet es um.
+- **GENRA CHOP FX:** die Effekt-Felder von BUS 1 / 2 haben wieder einen dunklen Grund (Schrift lesbar).
+
 ### GENRA CHOP 2.4.0
 - **GENRA CHOP:**
   - **WARP** (Leiste unter dem Wellenform-Fenster): das Sample ans Tempo des Beats anpassen, Modus AUTO / BEATS /

@@ -242,6 +242,7 @@ inline void patToJson(json_t* r, const Pattern& pat) {
 		json_array_append_new(jv, json_pack("[if]", (int) pat.lenDrum[v], pat.swDrum[v]));
 	json_object_set_new(r, "voiceSettings", jv);
 	json_object_set_new(r, "chordFollow", json_boolean(pat.chordFollow));
+	json_object_set_new(r, "loop", json_boolean(pat.loop));
 }
 inline void patFromJson(json_t* r, Pattern& pat) {
 	auto num = jnum;
@@ -326,6 +327,7 @@ inline void patFromJson(json_t* r, Pattern& pat) {
 			pat.swDrum[i] = num(o, 1);
 		}
 		pat.chordFollow = getb(r, "chordFollow", true);
+		pat.loop = getb(r, "loop", false);
 	}
 }
 
@@ -542,6 +544,56 @@ struct GenraChop : Module {
 	std::atomic<bool> samplePlaying{false};
 	std::atomic<float> samplePos{-1.f};
 	SVoice sv;
+	// LOOP (from 2.5.0): the whole sample loops in time, restarted on the first step of every LOOP length; the
+	// pattern says whether it is on (pat.loop, so ABLAUF's pads keep it), the length is the module's (0: AUTO)
+	int loopBars = 0;                    // saved: 0 AUTO, else 1, 2, 4, 8, 16
+	std::atomic<int> reqLoop{0};         // from the panel: 1 on, 2 off
+	std::atomic<bool> loopPub{false};    // for the panel: LOOP is on
+	std::atomic<int> loopBarsPub{0};     // for the panel: the length playing (bars)
+	SVoice lv[2];
+	int lvNext = 0;
+	long loopStep = -1;                  // steps since PLAY (or the last jump), for the LOOP length
+	const ChopSet* lvSet = nullptr;
+	/** The LOOP length in bars: as set, or AUTO from the sample's length at the tempo playing (1, 2, 4, 8 or 16). */
+	int loopBarsNow(float sr) const {
+		if (loopBars > 0)
+			return loopBars;
+		if (!chops || chops->data.sampleRate <= 0.f || stepPeriod <= 0.f)
+			return 4;
+		double secs = chops->data.frames() / (double) chops->data.sampleRate;
+		double bars = secs * sr / stepPeriod / STEPS;
+		int b = 1 << (int) std::lround(std::log2(std::max(0.5, bars)));
+		return std::max(1, std::min(16, b));
+	}
+	/** LOOP on the tick of a step: start (or restart) the loop where it belongs, keep its speed on the tempo. */
+	void loopTick(float sr) {
+		loopBarsPub = loopBarsNow(sr);
+		if (!pat.loop || !chops || !chops->data.frames()) {
+			for (SVoice& v : lv)
+				if (v.active)
+					v.release(sr);
+			return;
+		}
+		int N = loopBarsPub.load() * STEPS;
+		double frames = (double) chops->data.frames();
+		double inc = frames / (N * (double) stepPeriod); // exactly N bars long, whatever the tempo
+		long pos = loopStep < 0 ? 0 : loopStep % N;
+		SVoice& cur = lv[(lvNext + 1) % 2];
+		if (pos == 0 || !cur.active || lvSet != chops) {
+			// a fresh start: the voice before fades out (no click), the new one starts where the loop is now
+			for (SVoice& v : lv)
+				if (v.active)
+					v.release(sr);
+			SVoice& v = lv[lvNext];
+			lvNext = (lvNext + 1) % 2;
+			v.startRange(chops, 0.0, frames, 1.f, 0, false, sr, -1);
+			v.pos = frames * pos / N;
+			v.inc = inc;
+			lvSet = chops;
+		}
+		else
+			cur.inc = inc;
+	}
 	// CLEAR per track (bit per track), NEW ALL from the jack (the panel cuts the sample fresh)
 	std::atomic<int> reqClearTrack{0};
 	std::atomic<bool> freshReq{false};
@@ -767,7 +819,8 @@ struct GenraChop : Module {
 		queueTrack(s, 1, 0, [&](int i) { return ren.bass[i].pitch >= 0; }, [&](int i) { return ren.bass[i].off; });
 		queueTrack(s, 2, 0, [&](int i) { return ren.mel[i].pitch >= 0; }, [&](int i) { return ren.mel[i].off; });
 		queueTrack(s, 3, 0, [&](int i) { return ren.pad[i].pitch[0] >= 0; }, [&](int i) { return ren.pad[i].off; });
-		queueTrack(s, 4, 0, [&](int i) { return ren.chop[i].pad >= 0; }, [&](int i) { return ren.chop[i].off; });
+		if (!pat.loop) // LOOP: the chop pattern rests (the pads still play by hand)
+			queueTrack(s, 4, 0, [&](int i) { return ren.chop[i].pad >= 0; }, [&](int i) { return ren.chop[i].off; });
 	}
 
 	void playChop(int pad, float vel, int semis, bool rev, int lenSamples, float sr) {
@@ -844,6 +897,7 @@ struct GenraChop : Module {
 
 	void doReset() {
 		step = -1;
+		loopStep = -1;
 		phase = 1.f; // the next tick comes at once
 		nPend = 0;
 	}
@@ -852,6 +906,8 @@ struct GenraChop : Module {
 		for (SVoice& v : cv)
 			v.active = false;
 		for (SVoice& v : bv)
+			v.active = false;
+		for (SVoice& v : lv)
 			v.active = false;
 	}
 
@@ -872,6 +928,9 @@ struct GenraChop : Module {
 			}
 			sv.active = false;
 			samplePlaying = false;
+			for (SVoice& v : lv)
+				v.active = false;
+			lvSet = nullptr;
 			// the offsets stay for WARP, and for the patch's own sample; else they start at 0
 			bool keepMove = loader->keepMove || (moveLoad && loader->keepPattern);
 			moveLoad = false;
@@ -951,6 +1010,16 @@ struct GenraChop : Module {
 			}
 			dirty = true;
 		}
+		int rl = reqLoop.exchange(0);
+		if (rl) {
+			bool on = rl == 1;
+			if (on != pat.loop) {
+				pat.loop = on;
+				shareDirty = true; // GRID and ABLAUF see it
+			}
+		}
+		if ((tick & 255) == 0)
+			loopPub = pat.loop;
 		int rs = reqSample.exchange(0);
 		if (rs == 1 && chops) {
 			sv.startRange(chops, 0.0, (double) chops->data.frames(), 1.f, (int) params[PITCH_PARAM].getValue(), false, sr, -1);
@@ -1068,6 +1137,10 @@ struct GenraChop : Module {
 			nPend = 0;
 			step = -1;
 			phase = 1.f;
+			loopStep = -1;
+			for (SVoice& v : lv)
+				if (v.active)
+					v.release(sr);
 		}
 		wasRunning = run;
 		if (reqKill.exchange(false)) {
@@ -1083,6 +1156,7 @@ struct GenraChop : Module {
 			int j = reqJump.exchange(-1);
 			if (j >= 0 && j < LEN)
 				s = j;
+			loopStep = j >= 0 ? s : loopStep + 1;
 			step = s;
 			sinceTick = 0.f;
 			clkOutLeft = (int) (0.001f * sr);
@@ -1098,6 +1172,7 @@ struct GenraChop : Module {
 				}
 			}
 			queueStep(s);
+			loopTick(sr);
 		}
 		if ((tick & 31) == 0) {
 			int sp = step.load();
@@ -1152,10 +1227,21 @@ struct GenraChop : Module {
 		float L = 0.f, R = 0.f;
 		for (SVoice& v : cv)
 			v.next(sr, L, R);
+		bool lvOn = false;
+		for (SVoice& v : lv)
+			if (v.active) {
+				v.next(sr, L, R);
+				lvOn = true;
+			}
 		if (sv.active) {
 			sv.next(sr, L, R);
 			if ((tick & 63) == 0 && chops && chops->data.frames())
 				samplePos = (float) (sv.pos / (double) chops->data.frames());
+		}
+		else if (lvOn && pat.loop) {
+			// LOOP: the line in the waveform shows where the loop is
+			if ((tick & 63) == 0 && chops && chops->data.frames())
+				samplePos = (float) (lv[(lvNext + 1) % 2].pos / (double) chops->data.frames());
 		}
 		else if (samplePlaying.load() || samplePos.load() >= 0.f) {
 			samplePlaying = false;
@@ -1330,6 +1416,7 @@ struct GenraChop : Module {
 		json_object_set_new(r, "warpMode", json_integer(warpMode));
 		json_object_set_new(r, "warpEngine", json_integer(warpEngine));
 		json_object_set_new(r, "warpMul", json_real(warpMul));
+		json_object_set_new(r, "loopBars", json_integer(loopBars));
 		json_object_set_new(r, "lockChords", json_boolean(lockChords));
 		json_object_set_new(r, "clockDiv", json_integer(clockDiv));
 		json_object_set_new(r, "bakeChops", json_boolean(bakeChops));
@@ -1377,6 +1464,10 @@ struct GenraChop : Module {
 		warpEngine = clamp(geti(r, "warpEngine", hhw::ENGINE_RUBBER), 0, hhw::NUM_ENGINES - 1);
 		if (json_t* j = json_object_get(r, "warpMul"))
 			warpMul = clamp((float) json_number_value(j), 0.25f, 4.f);
+		{
+			int lb = geti(r, "loopBars", 0);
+			loopBars = (lb == 1 || lb == 2 || lb == 4 || lb == 8 || lb == 16) ? lb : 0;
+		}
 		if (!json_object_get(r, "bank"))
 			params[CHOPS_PARAM].setValue((float) DEFAULT_CHOPS); // a patch from before CHOPS: this knob was DUST
 		lockChords = getb(r, "lockChords", false);

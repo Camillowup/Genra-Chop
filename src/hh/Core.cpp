@@ -174,9 +174,25 @@ static void genDrums(Pattern& p, const Style& st, Rng& rng) {
 	for (int k : KICK_EXTRA)
 		if (A[KICK][k].vel == 0.f && rng.chance(0.4f))
 			A[KICK][k].vel = rng.range(0.5f, 0.75f), A[KICK][k].prio = rng.range(0.6f, 0.9f);
-	for (int i = 1; i < STEPS; i += 2)
-		if (A[CH][i].vel == 0.f && A[CH][i - 1].vel > 0.f && rng.chance(0.6f))
-			A[CH][i].vel = rng.range(0.25f, 0.4f), A[CH][i].prio = rng.range(0.7f, 0.95f);
+	// hats come early with DENS (from about 30-40 %): boom bap gets quiet ghost hats between the eighths, trap
+	// gets its 16ths sooner; a style with hats only on the quarters gets the missing eighths first
+	{
+		bool trapH = st.hatRoll > 0.f || st.bass == BM_808;
+		bool anyCH = false;
+		for (int i = 0; i < STEPS; i++)
+			anyCH = anyCH || A[CH][i].vel > 0.f;
+		if (anyCH)
+			for (int i = 0; i < STEPS; i += 2)
+				if (A[CH][i].vel == 0.f && rng.chance(0.7f))
+					A[CH][i].vel = rng.range(0.4f, 0.55f), A[CH][i].prio = rng.range(0.28f, 0.38f);
+		for (int i = 1; i < STEPS; i += 2)
+			if (A[CH][i].vel == 0.f && A[CH][i - 1].vel > 0.f && rng.chance(0.8f)) {
+				if (trapH)
+					A[CH][i].vel = rng.range(0.32f, 0.48f), A[CH][i].prio = rng.range(0.3f, 0.45f);
+				else
+					A[CH][i].vel = rng.range(0.18f, 0.3f), A[CH][i].prio = rng.range(0.32f, 0.48f);
+			}
+	}
 	if (A[OH][14].vel == 0.f && rng.chance(0.5f))
 		A[OH][14].vel = 0.6f, A[OH][14].prio = 0.75f;
 	if (A[SNARE][4].vel > 0.f || A[SNARE][8].vel > 0.f) {
@@ -210,15 +226,18 @@ static void genDrums(Pattern& p, const Style& st, Rng& rng) {
 			if (trap) {
 				static const int TP[] = {3, 7, 10, 13};
 				for (int i : TP)
-					if (rng.chance(0.5f))
-						add(PERC, i, rng.range(0.4f, 0.6f), rng.range(0.55f, 0.85f));
+					if (rng.chance(0.4f))
+						add(PERC, i, rng.range(0.3f, 0.45f), rng.range(0.76f, 0.9f));
 			}
 			else {
-				for (int i = 2; i < STEPS; i += 4)
-					add(PERC, i, rng.range(0.25f, 0.4f), rng.range(0.6f, 0.85f)); // tambourine on the off-beats
-				if (rng.chance(0.5f))
+				// tambourine: rarer, quieter, only from about 75 % DENS
+				static const int TB[] = {6, 14};
+				for (int i : TB)
+					if (rng.chance(0.6f))
+						add(PERC, i, rng.range(0.15f, 0.25f), rng.range(0.76f, 0.9f));
+				if (rng.chance(0.35f))
 					for (int i = 0; i < STEPS; i += 2)
-						add(PERC, i, 0.18f, 0.92f); // a shaker on the eighths, last of all
+						add(PERC, i, 0.12f, 0.94f); // a shaker on the eighths, last of all
 			}
 		}
 		if (funk || trap) {
@@ -227,10 +246,15 @@ static void genDrums(Pattern& p, const Style& st, Rng& rng) {
 				if (rng.chance(0.5f))
 					add(OH, i, rng.range(0.45f, 0.65f), rng.range(0.6f, 0.85f));
 		}
-		if (empty(CLAP) && rng.chance(trap || funk ? 0.8f : 0.4f))
-			for (int i = 0; i < STEPS; i++)
-				if (A[SNARE][i].vel > 0.f && A[SNARE][i].prio <= 0.1f)
-					add(CLAP, i, rng.range(0.5f, 0.7f), rng.range(0.7f, 0.9f));
+	}
+	// the clap layer is no longer in the bar template: it comes only now and then (bars 2 and 4, before the fill)
+	// and only with high DENS (from about 80 %); styles with their own clap keep it
+	bool clapLayer = true;
+	for (int i = 0; i < STEPS; i++)
+		clapLayer = clapLayer && A[CLAP][i].vel == 0.f;
+	{
+		bool trapC = st.hatRoll > 0.f || st.bass == BM_808, funkC = st.bass == BM_FUNK;
+		clapLayer = clapLayer && rng.chance(trapC || funkC ? 0.7f : 0.6f);
 	}
 	// the four bars: A A A A+fill (bar 2 a little different)
 	for (int b = 0; b < BARS; b++)
@@ -249,8 +273,8 @@ static void genDrums(Pattern& p, const Style& st, Rng& rng) {
 							h.off += st.dilla * rng.range(-0.25f, 0.25f);
 					}
 					h.off = std::max(-0.45f, std::min(0.45f, h.off));
-					if (v == CH && st.hatRoll > 0.f && rng.chance(st.hatRoll * (b == 3 ? 0.6f : 0.3f)))
-						h.ratchet = (uint8_t) (2 + rng.below(3)), h.prio = std::min(h.prio, 0.35f);
+					if (v == CH && st.hatRoll > 0.f && rng.chance(st.hatRoll * (b == 3 ? 0.7f : 0.38f)))
+						h.ratchet = (uint8_t) (2 + rng.below(3)), h.prio = std::min(h.prio, 0.3f);
 				}
 				p.drum[v][b * STEPS + i] = h;
 			}
@@ -294,6 +318,34 @@ static void genDrums(Pattern& p, const Style& st, Rng& rng) {
 					Hit& t = p.drum[TOM][b4 + i];
 					t.vel = rng.range(0.5f, 0.8f), t.prio = 0.85f, t.off = 0.f;
 				}
+	}
+	// the clap layer: on the last main snare of bar 2 and / or bar 4
+	if (clapLayer) {
+		for (int b = 1; b < BARS; b += 2) {
+			if (!rng.chance(b == 3 ? 0.8f : 0.6f))
+				continue;
+			int last = -1;
+			for (int i = 0; i < STEPS; i++) {
+				const Hit& sn = p.drum[SNARE][b * STEPS + i];
+				if (sn.vel > 0.f && sn.prio <= 0.1f)
+					last = i;
+			}
+			if (last >= 0) {
+				Hit& c = p.drum[CLAP][b * STEPS + last];
+				if (c.vel == 0.f) {
+					c = p.drum[SNARE][b * STEPS + last];
+					c.vel = rng.range(0.5f, 0.7f);
+					c.prio = rng.range(0.8f, 0.95f);
+					c.ratchet = 1;
+				}
+			}
+		}
+	}
+	// an open hat into bar 1 (end of bar 4), more often and earlier with DENS
+	if (rng.chance(0.75f)) {
+		Hit& o = p.drum[OH][b4 + 14];
+		if (o.vel == 0.f)
+			o.vel = rng.range(0.5f, 0.65f), o.prio = rng.range(0.38f, 0.5f), o.off = 0.f;
 	}
 	// a crash-ish open hat at the top of bar 1 (in the next cycle) now and then
 	if (rng.chance(0.3f))
