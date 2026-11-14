@@ -6,6 +6,8 @@ RACK_DIR ?= ../..
 SOURCES += $(wildcard src/*.cpp)
 SOURCES += $(wildcard src/hh/*.cpp)
 SOURCES += $(wildcard src/fx/*.cpp)
+# the link hub of the GENRA plugins (Follow GENRA: their instruments can follow GENRA CHOP), copied from the GENRA repo
+SOURCES += $(wildcard src/link/*.cpp)
 # WARP: Rubber Band (GPL-2.0-or-later) and Signalsmith Stretch (MIT), both in dep/
 SOURCES += $(wildcard src/warp/*.cpp)
 FLAGS += -Idep -Idep/rubberband

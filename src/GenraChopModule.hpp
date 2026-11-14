@@ -7,6 +7,8 @@
 #include "hh/Chop.hpp"
 #include "warp/Stretch.hpp"
 #include "MidiLearn.hpp"
+#include "link/Hub.hpp"
+#include "link/GenraPorts.hpp"
 #include <osdialog.h>
 #include <algorithm>
 #include <atomic>
@@ -25,6 +27,10 @@ struct Loader {
 	std::string status; // under m: what happened last (shown when there is no sample)
 	bool keepPattern = false;
 	bool keepMove = false; // WARP: the MOVE offsets stay
+	// a cut edited by hand in the waveform window (2.6.0): what happened to the chops, for the pattern's pad numbers
+	enum { EDIT_NONE = -1, EDIT_MOVE, EDIT_DELETE, EDIT_INSERT, EDIT_RESTORE };
+	int editKind = EDIT_NONE;
+	int editIdx = -1; // DELETE: the chop that went (merged into the one before); INSERT: the new chop's number
 	void say(const std::string& s, bool isErr) {
 		std::lock_guard<std::mutex> lk(m);
 		(isErr ? err : status) = s;
@@ -85,11 +91,65 @@ inline void finishSet(std::shared_ptr<Loader> L, ChopSet* cs, const WarpCfg& w) 
 	delete L->done.exchange(cs);
 }
 
+/** A cut edited by hand: `starts` are the new cut points in the live set's audio. With WARP the original is cut along
+ *  (at the same places / ratio), so warping again keeps the edit; BEATS is warped again from it (fast), TONE keeps
+ *  its stretched audio and is only cut anew. */
+inline void startEdit(std::shared_ptr<Loader> L, const ChopSet* from, std::vector<size_t> starts, int kind, int idx) {
+	if (!from || L->busy)
+		return;
+	L->busy = true;
+	L->keepPattern = true;
+	L->keepMove = true;
+	L->editKind = kind;
+	L->editIdx = idx;
+	// copied here (UI thread) while the live set cannot go away
+	std::shared_ptr<const ChopSet> src = from->source;
+	ChopSet* live = new ChopSet();
+	copyAnalysis(*from, *live);
+	live->data = from->data;
+	live->warpRatio = from->warpRatio;
+	live->warpHow = from->warpHow;
+	std::thread([L, src, live, starts]() {
+		ChopSet* out = live;
+		if (src) {
+			double r = live->warpRatio > 0.0 ? live->warpRatio : 1.0;
+			ChopSet* ns = new ChopSet();
+			copyAnalysis(*src, *ns);
+			ns->data = src->data;
+			std::vector<size_t> ss;
+			for (size_t x : starts)
+				ss.push_back((size_t) std::llround(x / r));
+			recut(*ns, ss);
+			std::shared_ptr<const ChopSet> nsp(ns);
+			if (live->warpHow == WARP_BEATS) {
+				SampleData audio;
+				warpBeats(*nsp, r, audio);
+				out = new ChopSet();
+				makeWarped(*nsp, std::move(audio), r, WARP_BEATS, *out);
+				delete live;
+			}
+			else {
+				float bpm = live->bpm;
+				recut(*live, starts);
+				live->bpm = bpm;
+			}
+			out->source = nsp;
+			out->warpRatio = r;
+		}
+		else
+			recut(*out, starts);
+		delete L->done.exchange(out);
+		L->say(string::f("cut edited: %d chops", out->info.count), false);
+		L->busy = false;
+	}).detach();
+}
+
 inline void startLoad(std::shared_ptr<Loader> L, std::string path, int mode, bool keepPattern, int count = DEFAULT_CHOPS,
                       WarpCfg w = WarpCfg()) {
 	L->busy = true;
 	L->keepPattern = keepPattern;
 	L->keepMove = false;
+	L->editKind = Loader::EDIT_NONE;
 	L->say("loading " + path, false);
 	std::thread([L, path, mode, count, w]() {
 		ChopSet* cs = new ChopSet();
@@ -142,6 +202,7 @@ inline void startRecut(std::shared_ptr<Loader> L, const ChopSet* from, int mode,
 	L->busy = true;
 	L->keepPattern = false;
 	L->keepMove = false;
+	L->editKind = Loader::EDIT_NONE;
 	SampleData data = from->source ? from->source->data : from->data;
 	std::thread([L, data, mode, count, w]() {
 		ChopSet* cs = new ChopSet();
@@ -163,6 +224,7 @@ inline void startWarp(std::shared_ptr<Loader> L, const ChopSet* from, WarpCfg w)
 	L->busy = true;
 	L->keepPattern = true;
 	L->keepMove = true;
+	L->editKind = Loader::EDIT_NONE;
 	ChopSet* copy = nullptr;
 	if (!src) {
 		// the live set, copied here (UI thread) while it cannot go away: its audio and what was found
@@ -627,7 +689,16 @@ struct GenraChop : Module {
 	struct UndoStep {
 		Pattern pat;
 		float move[PADS];
+		PadSet pads[PADS];
+		// the cut as it was (2.6.0: edited by hand in the waveform window); valid while cutEpoch is the same
+		uint32_t cutEpoch = 0;
+		int cutN = 0;
+		size_t cut[PADS] = {};
 	};
+	uint32_t cutEpoch = 1;            // +1 with every set that is not a hand edit (load, re-cut, WARP)
+	std::mutex restoreM;              // UNDO of a hand edit: the cut to go back to (the panel starts the job)
+	std::vector<size_t> restoreCut;   // under restoreM
+	std::atomic<bool> restoreReq{false};
 	std::vector<UndoStep> undo;
 	int undoN = 0, undoTop = 0;
 	std::atomic<int> undoCount{0};
@@ -685,9 +756,17 @@ struct GenraChop : Module {
 		applyStyleDefaults();
 		generate(pat, -1, set, SampleInfo(), pads, random::u32(), false, 92.f);
 		ChopRegistry::get().add(this);
+		{
+			genralink::GenraInfo gi;
+			gi.followPub = &followPub[0][0][0];
+			gi.outputs = FOLLOW_OUTS;
+			gi.stepPeriod = &stepPeriod;
+			genralink::hub().addGenra(this, gi);
+		}
 	}
 
 	~GenraChop() {
+		genralink::hub().gone(this);
 		ChopRegistry::get().remove(this);
 		delete chops;
 		delete brk;
@@ -711,9 +790,46 @@ struct GenraChop : Module {
 		set.padMode = st.pad;
 	}
 
+	/** A chop went or came (hand edit of the cut): the pattern's pad numbers, the pads' settings and MOVE follow. */
+	void remapPads(int kind, int idx) {
+		if (idx < 0 || (kind != Loader::EDIT_DELETE && kind != Loader::EDIT_INSERT))
+			return;
+		auto map = [&](int p) -> int {
+			if (p < 0)
+				return p;
+			if (kind == Loader::EDIT_DELETE)
+				return p == idx ? std::max(0, idx - 1) : (p > idx ? p - 1 : p);
+			return p >= idx ? std::min(PADS - 1, p + 1) : p;
+		};
+		for (int s = 0; s < LEN; s++)
+			if (pat.chop[s].pad >= 0)
+				pat.chop[s].pad = (int8_t) map(pat.chop[s].pad);
+		PadSet np[PADS];
+		float nm[PADS] = {};
+		for (int p = 0; p < PADS; p++) {
+			int q = map(p);
+			if (kind == Loader::EDIT_DELETE && p == idx)
+				continue; // merged into the one before: that one keeps its own settings
+			np[q] = pads[p];
+			nm[q] = moveMs[p];
+		}
+		for (int p = 0; p < PADS; p++) {
+			pads[p] = np[p];
+			moveMs[p] = nm[p];
+		}
+		selPad = -1;
+		lastPad = -1;
+	}
+
 	void pushUndo() {
 		undo[undoTop].pat = pat;
 		std::memcpy(undo[undoTop].move, moveMs, sizeof(moveMs));
+		for (int i = 0; i < PADS; i++)
+			undo[undoTop].pads[i] = pads[i];
+		undo[undoTop].cutEpoch = cutEpoch;
+		undo[undoTop].cutN = chops ? chops->info.count : 0;
+		for (int i = 0; i < PADS; i++)
+			undo[undoTop].cut[i] = chops ? chops->cutStart[i] : 0;
 		undoTop = (undoTop + 1) % (int) undo.size();
 		undoN = std::min(undoN + 1, (int) undo.size());
 		undoCount = undoN;
@@ -917,6 +1033,14 @@ struct GenraChop : Module {
 		// ---- a new sample / break from the worker thread
 		ChopSet* c = incoming.exchange(nullptr);
 		if (c) {
+			int ek = loader->editKind;
+			if (ek == Loader::EDIT_NONE)
+				cutEpoch++;
+			else if (ek != Loader::EDIT_RESTORE) {
+				pushUndo(); // the pattern, pads and cut before the edit (UNDO goes back to them)
+				remapPads(ek, loader->editIdx);
+			}
+			loader->editKind = Loader::EDIT_NONE;
 			for (SVoice& v : cv)
 				v.active = false;
 			toTrash(chops); // the UI deletes it (collectTrash)
@@ -983,6 +1107,22 @@ struct GenraChop : Module {
 			undoN--;
 			undoCount = undoN;
 			pat = undo[undoTop].pat;
+			const UndoStep& u = undo[undoTop];
+			// a hand edit of the cut is undone too: the panel cuts back (on a worker thread)
+			if (chops && u.cutEpoch == cutEpoch && u.cutN > 0) {
+				bool same = u.cutN == chops->info.count;
+				for (int i = 0; i < u.cutN && same; i++)
+					same = u.cut[i] == chops->cutStart[i];
+				if (!same) {
+					for (int i = 0; i < PADS; i++)
+						pads[i] = u.pads[i]; // numbered as in that cut
+					std::unique_lock<std::mutex> lk(restoreM, std::try_to_lock);
+					if (lk.owns_lock()) {
+						restoreCut.assign(u.cut, u.cut + u.cutN);
+						restoreReq = true;
+					}
+				}
+			}
 			if (std::memcmp(moveMs, undo[undoTop].move, sizeof(moveMs))) {
 				std::memcpy(moveMs, undo[undoTop].move, sizeof(moveMs));
 				applyMove();
@@ -1272,7 +1412,43 @@ struct GenraChop : Module {
 			rstOutLeft--;
 		if (barOutLeft > 0)
 			barOutLeft--;
+		publishFollow(args.frame);
 	}
+
+	// ---- FOLLOW GENRA (2.6.0): the instruments of the GENRA plugins follow GENRA CHOP like a GENRA. Through the link
+	// hub (link/Hub.hpp) they read this copy of the outputs, laid out as GENRA's (link/GenraPorts.hpp), and the tempo.
+	enum { FOLLOW_OUTS = genraports::RESET_OUTPUT + 1 };
+	float followPub[2][FOLLOW_OUTS][genraports::PUB_CHANNELS] = {};
+	void publishFollow(int64_t frame) {
+		float(*p)[genraports::PUB_CHANNELS] = followPub[frame & 1];
+		auto put = [&](int to, int from) {
+			for (int c = 0; c < genraports::PUB_CHANNELS; c++)
+				p[to][c] = outputs[from].voltages[c];
+		};
+		for (int v = 0; v < genraports::NUM_DRUM_OUTPUTS; v++) {
+			int j = 0;
+			while (j < DRUMS && DRUM_AT[j] != v)
+				j++;
+			put(genraports::DRUM_OUTPUT + v, DRUM_OUTPUT + std::min(j, DRUMS - 1));
+		}
+		put(genraports::BASS_VOCT_OUTPUT, BASS_OUTPUT + 0);
+		put(genraports::BASS_GATE_OUTPUT, BASS_OUTPUT + 1);
+		put(genraports::BASS_VEL_OUTPUT, BASS_OUTPUT + 2);
+		put(genraports::BASS_ACC_OUTPUT, BASS_OUTPUT + 3);
+		put(genraports::BASS_SLIDE_OUTPUT, BASS_OUTPUT + 4);
+		put(genraports::MEL_VOCT_OUTPUT, MEL_OUTPUT + 0);
+		put(genraports::MEL_GATE_OUTPUT, MEL_OUTPUT + 1);
+		put(genraports::MEL_VEL_OUTPUT, MEL_OUTPUT + 2);
+		put(genraports::MEL_ACC_OUTPUT, MEL_OUTPUT + 3);
+		put(genraports::MEL_SLIDE_OUTPUT, MEL_OUTPUT + 4);
+		put(genraports::PAD_VOCT_OUTPUT, PAD_OUTPUT + 0);
+		put(genraports::PAD_GATE_OUTPUT, PAD_OUTPUT + 1);
+		put(genraports::PAD_VEL_OUTPUT, PAD_OUTPUT + 2);
+		put(genraports::PAD_MOD_OUTPUT, PAD_OUTPUT + 3);
+		put(genraports::CLOCK_OUTPUT, CLK_OUTPUT);
+		put(genraports::RESET_OUTPUT, RST_OUTPUT);
+	}
+	void onRemove(const RemoveEvent& e) override { genralink::hub().gone(this); }
 
 	/** The cut with every pad's MOVE offset: a start moves (to the nearest zero crossing), the chop before ends
 	 *  there when they touched. Never shorter than 10 ms, never past the neighbours. Audio thread. */

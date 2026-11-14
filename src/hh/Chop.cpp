@@ -372,14 +372,73 @@ void findHarmony(ChopSet& cs) {
 	cs.info.keyConf = std::max(0.f, std::min(1.f, (best - second) * 5.f + best * 0.5f));
 }
 
+/** Per chop (the cut is done): the 12 tones, how long it rings, how bright; then chords, key and the break voices. */
+static void analyseChops(ChopSet& cs, const std::vector<float>& m);
+
 void analyse(ChopSet& cs, int mode, int count) {
 	cs.mode = mode;
 	cs.want = count;
 	std::vector<float> m = monoOf(cs.data);
-	float sr = cs.data.sampleRate;
 	cut(cs, m);
 	computePeaks(cs);
 	cs.bpm = findTempo(cs.data);
+	analyseChops(cs, m);
+}
+
+size_t nearZero(const SampleData& d, size_t at) {
+	size_t n = d.frames();
+	if (!n)
+		return 0;
+	at = std::min(at, n - 1);
+	size_t win = (size_t) (0.005f * d.sampleRate); // 5 ms either side
+	size_t a = at > win ? at - win : 0, b = std::min(n - 1, at + win);
+	size_t best = at;
+	float bestV = 1e9f;
+	bool st = d.R.size() == n;
+	for (size_t i = a; i <= b; i++) {
+		float v = st ? 0.5f * (d.L[i] + d.R[i]) : d.L[i];
+		float score = std::fabs(v) + 1e-6f * (float) (i > at ? i - at : at - i);
+		if (score < bestV)
+			bestV = score, best = i;
+	}
+	return best;
+}
+
+void recut(ChopSet& cs, std::vector<size_t> starts) {
+	size_t total = cs.data.frames();
+	std::sort(starts.begin(), starts.end());
+	// no two cuts closer than 10 ms, none past the end
+	size_t gap = (size_t) (0.01f * cs.data.sampleRate);
+	std::vector<size_t> st;
+	for (size_t x : starts) {
+		if (total && x >= total)
+			continue;
+		if (!st.empty() && x < st.back() + gap)
+			continue;
+		st.push_back(x);
+	}
+	if (st.empty())
+		st.push_back(0);
+	if ((int) st.size() > PADS)
+		st.resize(PADS);
+	cs.info.count = (int) st.size();
+	for (int i = 0; i < PADS; i++) {
+		if (i < cs.info.count) {
+			cs.start[i] = st[i];
+			cs.end[i] = i + 1 < cs.info.count ? st[i + 1] : total;
+		}
+		else
+			cs.start[i] = cs.end[i] = 0;
+		cs.cutStart[i] = cs.start[i];
+		cs.cutEnd[i] = cs.end[i];
+		cs.info.chop[i] = ChopInfo();
+	}
+	std::vector<float> m = monoOf(cs.data);
+	analyseChops(cs, m);
+}
+
+static void analyseChops(ChopSet& cs, const std::vector<float>& m) {
+	float sr = cs.data.sampleRate;
 	// per chop: the 12 tones, how long it rings, how bright
 	const size_t N = 4096;
 	std::vector<float> mag;

@@ -74,6 +74,17 @@ Controller nichts).
 - **LOAD SAMPLE** (gelb, rechts neben dem Wellenform-Fenster): WAV laden (Windows-Fenster, öffnet im Hauptordner: Rechtsklick › Sample root folder). Oder die WAV-Datei
   aufs Modul ziehen. Die Analyse läuft im Hintergrund: Chops, Akkord pro Chop, Tonart. Ohne Sample zeigt das Display
   den letzten Schritt (gelesen, analysiert, übergeben, in Gebrauch) oder den Fehler; dasselbe steht in Racks `log.txt`.
+- **Schneiden von Hand im Wellenform-Fenster** (ab 2.6.0): **eine Chop-Linie ziehen** verschiebt diesen Schnitt (er
+  rastet an der leisesten Stelle in der Nähe ein, damit nichts klickt; beim Ziehen zeigt eine gelbe Linie „CHOP n“);
+  **Doppelklick auf eine Linie** = dieser Chop fällt weg (er geht im Chop davor auf); **Doppelklick daneben** = ein
+  neuer Chop dort (bis 64). Akkorde und Tonart werden neu gefunden, das Pattern spielt weiter (seine Pad-Nummern
+  rücken mit, wenn ein Chop wegfällt oder dazukommt). **UNDO** nimmt einen Eingriff zurück. Mit WARP wird das Original
+  mitgeschnitten, neu Warpen behält den Eingriff. CHOPS drehen schneidet das Sample frisch (die Eingriffe gehen weg).
+  Ohne Sample lädt ein Klick ins Fenster eins; mit Sample lädt ein Klick nicht mehr (dafür LOAD SAMPLE).
+- **Follow GENRA** (ab 2.6.0, mit GENRA / GENRA Instruments ab 2.39.0): die GENRA-Instrumente (DRUM-X, SCHLAG, GRUND,
+  FUNKE, SCHMELZ, MONO …) können GENRA CHOP ohne Kabel folgen: Rechtsklick am Instrument › Follow GENRA › die Spur,
+  und unter „Which GENRA“ **GENRA CHOP #n** (automatisch nimmt zuerst ein GENRA, ein GENRA CHOP, wenn keins da ist).
+  Sie bekommen Drums, Bass, Melodie, Pads, Clock und Reset wie von GENRA.
 - **SAMPLE** (ab 2.4.0, links unter dem Wellenform-Fenster, bündig mit STOP / PLAY darunter): spielt das ganze
   Sample (so wie es nach WARP klingt), eine gelbe Linie läuft im Wellenform-Fenster mit; nochmal drücken = Stopp.
 - **WARP** (ab 2.4.0, die Leiste unter dem Wellenform-Fenster): passt das Sample ans Tempo des Beats an (nur das
@@ -331,17 +342,15 @@ Returns. Verbunden wird vorerst nur mit Kabeln (Spur-Ausgänge von GENRA CHOP, s
   Samples geprüft). Die Verzerrer nutzen statt Oversampling eine günstigere Glättung (Antiderivative Anti-Aliasing).
   Im Test (48 kHz) kostet ein laufender Effekt unter 0,2 % eines Prozessorkerns (Vinyl, Hall und Saturator am
   meisten).
-- **Vorbereitet, noch nicht drin:** kabellos verbinden (Sound und Clock von GENRA CHOP ohne Kabel). Im Code ist die
-  Quelle schon eine eigene Wahl (heute nur „Kabel“, im Patch gespeichert).
+- **Ohne Kabel** (ab 2.6.0, Rechtsklick): **Sound at IN from GENRA CHOP** (aus, CHOP L/R oder CHOP + BREAK) und
+  **Clock and reset from GENRA CHOP**; welches GENRA CHOP (automatisch: das einzige / erste). Ein Kabel in IN L/R, CLK
+  oder RST gewinnt immer. Ein gelbes Segment über der Buchse zeigt, was ohne Kabel kommt.
+- **Pegel** (ab 2.6.0): bei ihren Grundeinstellungen sind die Effekte etwa so laut wie das trockene Signal (ein
+  Pegelausgleich pro Effekt, gemessen in `test/fx_test.cpp`); LOW CUT, TAPE STOP und BACKSPIN sind absichtlich leiser,
+  Echos und Hall kommen obendrauf. Die Presets „Spaced Out“ und „Robot Talk“ sind etwas gezähmt.
 
 ## Noch nicht drin (Merkliste)
 
-- **Wellenform-Display:** Schnitte verschieben (Einrasten am Nulldurchgang), setzen (Doppelklick), entfernen
-  (Rechtsklick auf die Linie), Klick spielt den Chop, Rechtsklick sonst = anderes Sample.
-
-- **Follow GENRA** für FUNKE, GRUND, SCHMELZ, DRUM-X, SCHLAG ohne Kabel: die Instrumente kennen als Quelle bisher
-  nur GENRA und GENRA BOX (Slug-Prüfung in `Follow.cpp` im GENRA-Repo); GENRA CHOP müsste sich dort über den Link-Hub
-  anmelden. Bis dahin per Kabel.
 - Der PITCH-Regler verschiebt die Chops, aber noch nicht die erkannten Akkorde für Bass und Pads.
 
 ## Technik

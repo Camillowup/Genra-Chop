@@ -12,9 +12,10 @@
 // effect on the bus last touched. Eight DJ pads act on all the outputs while held (any effect, right-click). DJ FILTER
 // (low-pass left, high-pass right) on all the outputs. PRESET: whole setups. Tempo: 16ths at CLK, else the menu's.
 //
-// Prepared for later: where the sound and the clock come from is a choice of its own (today only the cables), saved
-// in the patch, with room on the panel for the light segments of a connection without cables.
+// Without cables (2.6.0, right-click): the sound at IN can come from a GENRA CHOP (CHOP L/R, or CHOP + BREAK), the
+// clock and reset too. A real cable always wins; a lit segment over the jack shows what comes without one.
 #include "plugin.hpp"
+#include "GenraChopModule.hpp"
 #include "ChopUI.hpp"
 #include "ChopFxLayout.hpp"
 #include "MidiLearn.hpp"
@@ -100,9 +101,25 @@ struct ChopFx : Module {
 		return J[s];
 	}
 
-	// where the sound and the clock come from (saved): today the cables; later also GENRA CHOP without cables
-	enum Source { SRC_CABLES = 0, NUM_SOURCE_KINDS };
-	int audioSource = SRC_CABLES, clockSource = SRC_CABLES;
+	// where the sound (at IN) and the clock come from (saved): the cables, or a GENRA CHOP without cables
+	enum Source { SRC_CABLES = 0, SRC_CHOP, SRC_CHOP_BRK, NUM_SOURCE_KINDS };
+	enum ClockSource { CLKSRC_CABLES = 0, CLKSRC_CHOP, NUM_CLOCK_KINDS };
+	std::atomic<int> audioSource{SRC_CABLES}, clockSource{CLKSRC_CABLES};
+	int64_t linkedId = -1; // the GENRA CHOP (-1: automatic)
+	std::atomic<GenraChop*> host{nullptr}; // found by the panel; checked against the registry when one goes
+	std::atomic<bool> hostChanged{true};
+	GenraChop* h = nullptr; // the audio thread's checked copy
+	uint32_t hostEpoch = 0;
+	// for the panel: what comes without a cable right now (IN, CLK, RST)
+	std::atomic<bool> wlIn{false}, wlClk{false}, wlRst{false};
+	void checkHost() {
+		uint32_t ep = ChopRegistry::get().epoch.load();
+		if (hostChanged.exchange(false) || ep != hostEpoch) {
+			hostEpoch = ep;
+			GenraChop* c = host.load();
+			h = (c && ChopRegistry::get().alive(c)) ? c : nullptr;
+		}
+	}
 
 	Bus bus[2];
 	Bus dj[GROUPS] = {Bus(17), Bus(17), Bus(17), Bus(17), Bus(17), Bus(17), Bus(17), Bus(17), Bus(17), Bus(17)};
@@ -223,27 +240,60 @@ struct ChopFx : Module {
 	}
 
 	void readSource(int s, float& L, float& R) {
-		switch (audioSource) {
-			default: { // SRC_CABLES
-				int j = srcJack(s);
-				L = inputs[j].getVoltage() / 5.f;
-				R = SRC_STEREO[s] && inputs[j + 1].isConnected() ? inputs[j + 1].getVoltage() / 5.f : L;
+		int j = srcJack(s);
+		// IN without a cable: from GENRA CHOP (a cable always wins)
+		if (s == S_IN && h && !inputs[INL_INPUT].isConnected() && !inputs[INR_INPUT].isConnected()) {
+			int as = audioSource.load();
+			if (as == SRC_CHOP || as == SRC_CHOP_BRK) {
+				L = h->outputs[GenraChop::CHOP_L_OUTPUT].getVoltage();
+				R = h->outputs[GenraChop::CHOP_R_OUTPUT].getVoltage();
+				if (as == SRC_CHOP_BRK) {
+					L += h->outputs[GenraChop::BRK_L_OUTPUT].getVoltage();
+					R += h->outputs[GenraChop::BRK_R_OUTPUT].getVoltage();
+				}
+				L /= 5.f;
+				R /= 5.f;
+				wlNow[0] = true;
+				return;
 			}
 		}
+		L = inputs[j].getVoltage() / 5.f;
+		R = SRC_STEREO[s] && inputs[j + 1].isConnected() ? inputs[j + 1].getVoltage() / 5.f : L;
+	}
+	bool wlNow[3] = {false, false, false};
+	/** The clock and reset: the jack, or (no cable, chosen) GENRA CHOP's. */
+	float clockV(bool& connected) {
+		if (inputs[CLK_INPUT].isConnected()) {
+			connected = true;
+			return inputs[CLK_INPUT].getVoltage();
+		}
+		if (h && clockSource.load() == CLKSRC_CHOP) {
+			connected = true;
+			wlNow[1] = true;
+			return h->outputs[GenraChop::CLK_OUTPUT].getVoltage();
+		}
+		connected = false;
+		return 0.f;
+	}
+	float resetV() {
+		if (inputs[RST_INPUT].isConnected())
+			return inputs[RST_INPUT].getVoltage();
+		if (h && clockSource.load() == CLKSRC_CHOP) {
+			wlNow[2] = true;
+			return h->outputs[GenraChop::RST_OUTPUT].getVoltage();
+		}
+		return 0.f;
 	}
 	/** A 16th from the clock (true on its edge); connected: is there a clock at all. */
 	bool readClock(bool& connected) {
-		switch (clockSource) {
-			default:
-				connected = inputs[CLK_INPUT].isConnected();
-				return connected && clkTrig.process(inputs[CLK_INPUT].getVoltage(), 0.1f, 1.f);
-		}
+		float v = clockV(connected);
+		return connected && clkTrig.process(v, 0.1f, 1.f);
 	}
 
 	void stepTempo(float sr) {
 		bool conn = false;
 		bool edge = readClock(conn);
-		if (rstTrig.process(inputs[RST_INPUT].getVoltage(), 0.1f, 1.f)) {
+		if (rstTrig.process(resetV(), 0.1f, 1.f)) {
 			pulse = -1;
 			tempo.barPos = 0.0;
 		}
@@ -326,6 +376,14 @@ struct ChopFx : Module {
 
 	void process(const ProcessArgs& args) override {
 		float sr = args.sampleRate;
+		checkHost();
+		// what came without a cable in the last sample (for the panel's light segments)
+		if ((args.frame & 255) == 0) {
+			wlIn = wlNow[0];
+			wlClk = wlNow[1];
+			wlRst = wlNow[2] || (h && clockSource.load() == CLKSRC_CHOP && !inputs[RST_INPUT].isConnected());
+		}
+		wlNow[0] = wlNow[1] = wlNow[2] = false;
 		if (sr != srSeen) {
 			srSeen = sr;
 			for (Bus& b : bus)
@@ -443,8 +501,9 @@ struct ChopFx : Module {
 		json_object_set_new(r, "route", json_integer(route));
 		json_object_set_new(r, "preset", json_integer(preset));
 		json_object_set_new(r, "freeBpm", json_real(freeBpm));
-		json_object_set_new(r, "audioSource", json_integer(audioSource));
-		json_object_set_new(r, "clockSource", json_integer(clockSource));
+		json_object_set_new(r, "audioSource", json_integer(audioSource.load()));
+		json_object_set_new(r, "clockSource", json_integer(clockSource.load()));
+		json_object_set_new(r, "linkedId", json_integer(linkedId));
 		json_object_set_new(r, "on1", json_boolean(latch[0]));
 		json_object_set_new(r, "on2", json_boolean(latch[1]));
 		json_object_set_new(r, "activeBus", json_integer(activeBus));
@@ -473,7 +532,9 @@ struct ChopFx : Module {
 		if (json_t* j = json_object_get(r, "freeBpm"))
 			freeBpm = clamp((float) json_number_value(j), 40.f, 240.f);
 		audioSource = clamp(gi("audioSource", SRC_CABLES), 0, NUM_SOURCE_KINDS - 1);
-		clockSource = clamp(gi("clockSource", SRC_CABLES), 0, NUM_SOURCE_KINDS - 1);
+		clockSource = clamp(gi("clockSource", CLKSRC_CABLES), 0, NUM_CLOCK_KINDS - 1);
+		linkedId = gi("linkedId", -1);
+		hostChanged = true;
 		latch[0] = json_is_true(json_object_get(r, "on1"));
 		latch[1] = json_is_true(json_object_get(r, "on2"));
 		activeBus = clamp(gi("activeBus", 0), 0, 1);
@@ -644,6 +705,29 @@ static void effectMenu(ui::Menu* menu, std::function<int()> cur, std::function<v
 				                                   [=]() { choose(f); }));
 	}
 }
+
+/** The lit segments over IN L/R, CLK and RST: what comes from GENRA CHOP without a cable. */
+struct WirelessLights : widget::TransparentWidget {
+	ChopFx* m = nullptr;
+	void draw(const DrawArgs& args) override {
+		if (!m)
+			return;
+		struct J {
+			const float* p;
+			bool on;
+		};
+		J js[4] = {{cfx::INL_IN, m->wlIn.load()}, {cfx::INR_IN, m->wlIn.load()}, {cfx::CLK_IN, m->wlClk.load()},
+		           {cfx::RST_IN, m->wlRst.load()}};
+		for (const J& j : js) {
+			if (!j.on)
+				continue;
+			nvgBeginPath(args.vg);
+			nvgRoundedRect(args.vg, j.p[0] - 7.5f, j.p[1] - mm2px(7.2f), 15.f, 2.2f, 1.f);
+			nvgFillColor(args.vg, C_YELLOW);
+			nvgFill(args.vg);
+		}
+	}
+};
 
 struct ChopFxWidget : ModuleWidget, ml::LearnHost {
 	ml::Learner learn;
@@ -949,6 +1033,12 @@ struct ChopFxWidget : ModuleWidget, ml::LearnHost {
 		}
 		in(cfx::CLK_IN, M::CLK_INPUT);
 		in(cfx::RST_IN, M::RST_INPUT);
+		{
+			WirelessLights* wl = new WirelessLights;
+			wl->m = m;
+			wl->box.size = box.size;
+			addChild(wl);
+		}
 		in(cfx::B0_ON_IN, M::ON_INPUT + 0);
 		in(cfx::B0_FX_IN, M::FXCV_INPUT + 0);
 		in(cfx::B1_ON_IN, M::ON_INPUT + 1);
@@ -960,9 +1050,33 @@ struct ChopFxWidget : ModuleWidget, ml::LearnHost {
 		out(cfx::OUTR_OUT, M::MIXR_OUTPUT);
 	}
 
+	/** The GENRA CHOP the FX takes from without cables: the one chosen, else the only (or first) one. */
+	void findHost(ChopFx* m) {
+		GenraChop* found = nullptr;
+		bool want = m->audioSource.load() != ChopFx::SRC_CABLES || m->clockSource.load() != ChopFx::CLKSRC_CABLES;
+		if (want) {
+			if (m->linkedId >= 0) {
+				Module* x = APP->engine->getModule(m->linkedId);
+				if (x && x->model == modelGenraChop)
+					found = static_cast<GenraChop*>(x);
+			}
+			if (!found && m->linkedId < 0) {
+				ChopRegistry& reg = ChopRegistry::get();
+				std::lock_guard<std::mutex> lk(reg.m);
+				if (!reg.all.empty())
+					found = reg.all[0];
+			}
+		}
+		if (found != m->host.load()) {
+			m->host = found;
+			m->hostChanged = true;
+		}
+	}
+
 	void step() override {
 		ChopFx* m = dynamic_cast<ChopFx*>(module);
 		if (m) {
+			findHost(m);
 			learn.step();
 			for (int i = 0; i < QUICKS; i++)
 				if (quickBtn[i])
@@ -1007,6 +1121,30 @@ struct ChopFxWidget : ModuleWidget, ml::LearnHost {
 		}));
 		menu->addChild(createMenuLabel(m->clocked ? string::f("Clock at CLK: %.1f BPM", 60.f * APP->engine->getSampleRate() / m->tempo.spb)
 		                                          : std::string("No clock at CLK (16ths)")));
+		menu->addChild(new MenuSeparator);
+		menu->addChild(createMenuLabel("Without cables (a cable always wins)"));
+		static const char* const AS[ChopFx::NUM_SOURCE_KINDS] = {"Off (cables only)", "CHOP L/R", "CHOP + BREAK"};
+		menu->addChild(createSubmenuItem("Sound at IN from GENRA CHOP", AS[m->audioSource.load()], [=](Menu* sub) {
+			for (int i = 0; i < ChopFx::NUM_SOURCE_KINDS; i++)
+				sub->addChild(createCheckMenuItem(AS[i], "", [=]() { return m->audioSource.load() == i; }, [=]() { m->audioSource = i; }));
+		}));
+		menu->addChild(createBoolMenuItem("Clock and reset from GENRA CHOP", "",
+		                                  [=]() { return m->clockSource.load() == ChopFx::CLKSRC_CHOP; },
+		                                  [=](bool on) { m->clockSource = on ? ChopFx::CLKSRC_CHOP : ChopFx::CLKSRC_CABLES; }));
+		menu->addChild(createSubmenuItem("GENRA CHOP", m->linkedId < 0 ? "Automatic" : "", [=](Menu* sub) {
+			sub->addChild(createCheckMenuItem("Automatic (the only / first one)", "", [=]() { return m->linkedId < 0; },
+			                                  [=]() { m->linkedId = -1; }));
+			int n = 0;
+			for (int64_t id : APP->engine->getModuleIds()) {
+				Module* x = APP->engine->getModule(id);
+				if (!x || x->model != modelGenraChop)
+					continue;
+				n++;
+				GenraChop* c = static_cast<GenraChop*>(x);
+				sub->addChild(createCheckMenuItem(string::f("GENRA CHOP #%d (%s)", n, c->style().name), "",
+				                                  [=]() { return m->linkedId == id; }, [=]() { m->linkedId = id; }));
+			}
+		}));
 		menu->addChild(new MenuSeparator);
 		menu->addChild(createMenuItem("Quick keys back to the factory", "", [=]() {
 			for (int i = 0; i < QUICKS; i++)

@@ -102,6 +102,24 @@ int main() {
 			      "stab %d: chord root %d, want %d", i, cs.info.chop[best].chord.root, ROOT[i / 2]);
 	}
 	CHECK(cs.info.key.root == 5 && cs.info.key.minor, "key %d%s, want F minor", cs.info.key.root, cs.info.key.minor ? "m" : "");
+	// moving, deleting and adding a cut by hand (2.6.0): the count follows, the chords are found again
+	{
+		ChopSet e = cs;
+		int n0 = e.info.count;
+		std::vector<size_t> st(e.cutStart, e.cutStart + n0);
+		st.erase(st.begin() + 3);
+		recut(e, st);
+		CHECK(e.info.count == n0 - 1, "delete: %d chops, want %d", e.info.count, n0 - 1);
+		st.push_back(e.data.frames() / 2 + 123);
+		recut(e, st);
+		CHECK(e.info.count == n0, "insert: %d chops, want %d", e.info.count, n0);
+		for (int i = 1; i < e.info.count; i++)
+			CHECK(e.cutStart[i] > e.cutStart[i - 1] && e.cutEnd[i - 1] == e.cutStart[i], "recut: chops not in a row at %d", i);
+		CHECK(e.cutEnd[e.info.count - 1] == e.data.frames(), "recut: last chop does not end at the end");
+		size_t z = nearZero(e.data, e.data.frames() / 3);
+		CHECK(z + 1000 > e.data.frames() / 3 && z < e.data.frames() / 3 + 1000, "nearZero too far away");
+		CHECK(e.info.key.root == cs.info.key.root, "recut: key changed");
+	}
 
 	// ---- with the sample: chops sound, the bass follows them
 	Settings set;

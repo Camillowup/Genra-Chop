@@ -163,12 +163,114 @@ struct HHLcd : widget::Widget {
 
 struct HHWave : widget::OpaqueWidget {
 	GenraChop* module = nullptr;
+	// 2.6.0: the cut by hand. Drag a chop line = move that cut; double-click on a line = that chop goes (merged into
+	// the one before), double-click elsewhere = a new chop there. Without a sample a click loads one.
+	int dragChop = -1;    // the cut being dragged
+	float dragX = 0.f;    // where it is (px)
+	float pressX = 0.f;
+	int hover = -1;
+	const ChopSet* set() const { return module ? module->uiChops.load() : nullptr; }
+	/** The cut line nearest to x (within 4 px), or -1. */
+	int lineAt(float x) const {
+		const ChopSet* c = set();
+		if (!c || !c->data.frames())
+			return -1;
+		float w = box.size.x;
+		int best = -1;
+		float bd = 4.f;
+		for (int p = 0; p < c->info.count; p++) {
+			float lx = w * c->start[p] / c->data.frames(); // where it is drawn (with MOVE)
+			if (std::fabs(lx - x) <= bd)
+				bd = std::fabs(lx - x), best = p;
+		}
+		return best;
+	}
+	size_t frameAt(float x) const {
+		const ChopSet* c = set();
+		if (!c)
+			return 0;
+		float f = clamp(x / box.size.x, 0.f, 1.f);
+		return std::min(c->data.frames() ? c->data.frames() - 1 : 0, (size_t) (f * c->data.frames()));
+	}
+	std::vector<size_t> cuts() const {
+		const ChopSet* c = set();
+		std::vector<size_t> st;
+		if (c)
+			st.assign(c->cutStart, c->cutStart + c->info.count);
+		return st;
+	}
 	void onButton(const ButtonEvent& e) override {
-		if (module && e.button == GLFW_MOUSE_BUTTON_LEFT && e.action == GLFW_PRESS && !module->uiChops.load() &&
-		    !module->loader->busy) {
-			module->loadSample();
+		if (!module || e.button != GLFW_MOUSE_BUTTON_LEFT)
+			return;
+		if (e.action == GLFW_PRESS) {
+			if (!set()) {
+				if (!module->loader->busy)
+					module->loadSample();
+				e.consume(this);
+				return;
+			}
+			pressX = e.pos.x;
+			dragChop = module->loader->busy ? -1 : lineAt(e.pos.x);
+			dragX = e.pos.x;
 			e.consume(this);
 		}
+	}
+	void onDragMove(const DragMoveEvent& e) override {
+		if (dragChop < 0)
+			return;
+		float z = APP->scene->rackScroll->getZoom();
+		dragX += e.mouseDelta.x / z;
+	}
+	void onDragEnd(const DragEndEvent& e) override {
+		int p = dragChop;
+		dragChop = -1;
+		const ChopSet* c = set();
+		if (p < 0 || !c || std::fabs(dragX - pressX) < 1.5f || module->loader->busy)
+			return;
+		std::vector<size_t> st = cuts();
+		if (p >= (int) st.size())
+			return;
+		// between its neighbours (10 ms room), on the quietest point nearby
+		size_t gap = (size_t) (0.01f * c->data.sampleRate);
+		size_t lo = p > 0 ? st[p - 1] + gap : 0;
+		size_t hi = p + 1 < (int) st.size() ? st[p + 1] - std::min(st[p + 1], gap) : c->data.frames() - 1;
+		size_t f = nearZero(c->data, frameAt(dragX));
+		if (lo > hi)
+			return;
+		st[p] = std::max(lo, std::min(hi, f));
+		startEdit(module->loader, c, st, Loader::EDIT_MOVE, p);
+	}
+	void onDoubleClick(const DoubleClickEvent& e) override {
+		const ChopSet* c = set();
+		if (!module || !c || module->loader->busy)
+			return;
+		std::vector<size_t> st = cuts();
+		int p = lineAt(pressX);
+		if (p >= 0) {
+			if (st.size() < 2)
+				return;
+			st.erase(st.begin() + p);
+			startEdit(module->loader, c, st, Loader::EDIT_DELETE, p);
+		}
+		else {
+			if ((int) st.size() >= PADS)
+				return;
+			size_t f = nearZero(c->data, frameAt(pressX));
+			int at = 0;
+			while (at < (int) st.size() && st[at] < f)
+				at++;
+			st.insert(st.begin() + at, f);
+			startEdit(module->loader, c, st, Loader::EDIT_INSERT, at);
+		}
+		e.consume(this);
+	}
+	void onHover(const HoverEvent& e) override {
+		hover = lineAt(e.pos.x);
+		OpaqueWidget::onHover(e);
+	}
+	void onLeave(const LeaveEvent& e) override {
+		hover = -1;
+		OpaqueWidget::onLeave(e);
 	}
 	void draw(const DrawArgs& args) override {
 		NVGcontext* vg = args.vg;
@@ -221,12 +323,34 @@ struct HHWave : widget::OpaqueWidget {
 			      C_YELLOW, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
 		for (int p = 0; p < c->info.count; p++) {
 			float x = total ? w * c->start[p] / total : 0.f;
+			bool hl = p == hover || p == dragChop;
 			nvgBeginPath(vg);
-			nvgRect(vg, x, 0, 0.8f, h);
-			nvgFillColor(vg, C_RED);
+			nvgRect(vg, x - (hl ? 0.4f : 0.f), 0, hl ? 1.6f : 0.8f, h);
+			nvgFillColor(vg, hl && dragChop < 0 ? C_YELLOW : C_RED);
 			nvgFill(vg);
 			label(vg, uiBold(), x + 2.f, 5.f, std::to_string(p + 1), 6.5f, nvgRGB(0xd8, 0xd1, 0xbf), NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
 		}
+		// a cut being dragged: where it will go
+		if (dragChop >= 0) {
+			float x = clamp(dragX, 0.f, w);
+			nvgBeginPath(vg);
+			nvgRect(vg, x - 0.8f, 0, 1.6f, h);
+			nvgFillColor(vg, C_YELLOW);
+			nvgFill(vg);
+			nvgBeginPath(vg);
+			nvgMoveTo(vg, x - 3.f, 0);
+			nvgLineTo(vg, x + 3.f, 0);
+			nvgLineTo(vg, x, 4.f);
+			nvgClosePath(vg);
+			nvgFill(vg);
+			std::string t = string::f("CHOP %d", dragChop + 1);
+			nvgBeginPath(vg);
+			nvgRoundedRect(vg, x - 14.f, h - 10.f, 28.f, 9.f, 1.5f);
+			nvgFill(vg);
+			label(vg, uiBold(), x, h - 5.5f, t, 6.f, C_GRAPH);
+		}
+		if (module->loader->busy)
+			label(vg, uiBold(), w - 4.f, h - 5.f, "CUTTING...", 6.5f, C_YELLOW, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
 	}
 };
 
@@ -760,6 +884,17 @@ struct GenraChopWidget : ModuleWidget, ml::LearnHost {
 		if (GenraChop* m = dynamic_cast<GenraChop*>(module)) {
 			m->collectTrash();
 			learn.step();
+			// UNDO of a hand edit of the cut: cut back (worker thread)
+			if (m->restoreReq.load() && !m->loader->busy) {
+				std::vector<size_t> st;
+				{
+					std::lock_guard<std::mutex> lk(m->restoreM);
+					st = m->restoreCut;
+					m->restoreReq = false;
+				}
+				if (!st.empty())
+					startEdit(m->loader, m->uiChops.load(), st, Loader::EDIT_RESTORE, -1);
+			}
 			if (m->warpPending && !m->loader->busy)
 				m->rewarp();
 			// NEW at the jack: the sample cut fresh, as with the button

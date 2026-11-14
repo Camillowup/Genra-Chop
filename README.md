@@ -75,6 +75,17 @@ on the controller).
   right-click › Sample root folder). Or drag the WAV file onto the module. The analysis runs in the background: chops,
   a chord per chop, key. Without a sample the display shows the last step (read, analysed, handed over, in use) or the
   error; the same is written to Rack's `log.txt`.
+- **Cut by hand in the waveform window** (from 2.6.0): **drag a chop line** to move that cut (it snaps to the quietest
+  point nearby, so it does not click; while dragging a yellow line shows "CHOP n"); **double-click on a line** = that
+  chop goes (it merges into the one before); **double-click elsewhere** = a new chop there (up to 64). Chords and key
+  are found anew, the pattern keeps playing (its pad numbers follow when a chop goes or comes). **UNDO** takes an edit
+  back. With WARP the original is cut along, so warping again keeps the edit. Turning CHOPS cuts the sample fresh
+  (the edits go). Without a sample a click in the window loads one; with a sample a click no longer loads (use LOAD
+  SAMPLE).
+- **Follow GENRA** (from 2.6.0, with GENRA / GENRA Instruments 2.39.0 or newer): the GENRA instruments (DRUM-X, SCHLAG,
+  GRUND, FUNKE, SCHMELZ, MONO …) can follow GENRA CHOP without cables: right-click on the instrument › Follow GENRA ›
+  the track, and under "Which GENRA" **GENRA CHOP #n** (automatic takes a GENRA first, a GENRA CHOP when there is
+  none). They get drums, bass, melody, pads, clock and reset as from GENRA.
 - **SAMPLE** (from 2.4.0, bottom left of the waveform window, lined up with STOP / PLAY below): plays the whole sample
   (as it sounds after WARP), a yellow line runs along in the waveform window; press again = stop.
 - **WARP** (from 2.4.0, the strip below the waveform window): fits the sample to the tempo of the beat (only the
@@ -337,16 +348,15 @@ to CLK).
   is computed). Only the selected effect is computed; filter coefficients only when a knob moves (checked every 16
   samples). The distortions use a cheaper smoothing (antiderivative anti-aliasing) instead of oversampling.
   In the test (48 kHz) a running effect costs less than 0.2 % of one CPU core (vinyl, reverb and saturator the most).
-- **Prepared, not in yet:** wireless connection (sound and clock from GENRA CHOP without cables). In the code the
-  source is already its own choice (today only "cable", stored in the patch).
+- **Without cables** (from 2.6.0, right-click): **Sound at IN from GENRA CHOP** (off, CHOP L/R, or CHOP + BREAK) and
+  **Clock and reset from GENRA CHOP**; which GENRA CHOP (automatic: the only / first one). A cable in IN L/R, CLK or
+  RST always wins. A yellow segment over the jack shows what comes without a cable.
+- **Levels** (from 2.6.0): at their default settings the effects are about as loud as the dry signal (a level trim per
+  effect, measured in `test/fx_test.cpp`); LOW CUT, TAPE STOP and BACKSPIN are quieter on purpose, echoes and reverb
+  add on top. The presets "Spaced Out" and "Robot Talk" were tamed a little.
 
 ## Not in yet (to-do list)
 
-- **Waveform display:** move cuts (snapping to zero crossings), set them (double-click), remove them (right-click on
-  the line), click plays the chop, right-click otherwise = another sample.
-- **Follow GENRA** for FUNKE, GRUND, SCHMELZ, DRUM-X, SCHLAG without cables: so far the instruments only know GENRA and
-  GENRA BOX as a source (slug check in `Follow.cpp` in the GENRA repo); GENRA CHOP would have to register there via the
-  link hub. Until then, use cables.
 - The PITCH knob shifts the chops, but not yet the detected chords used for bass and pads.
 
 ## Technical notes

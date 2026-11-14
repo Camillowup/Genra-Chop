@@ -3,6 +3,17 @@
 Was in welcher Version dazukam (neueste zuerst). Bis 2.4.0 lag GENRA CHOP im Repo von GENRA Test
 (`Camillowup/testmodulesvcv`, Ordner `genra-chop/`, davor als GENRA HipHop).
 
+### GENRA CHOP 2.6.0
+- **GENRA CHOP:** Schneiden von Hand im Wellenform-Fenster: Chop-Linie ziehen (rastet an der leisesten Stelle ein),
+  Doppelklick auf eine Linie = Chop weg, Doppelklick daneben = neuer Chop; Akkorde und Tonart neu, Pad-Nummern im
+  Pattern rücken mit, UNDO nimmt es zurück, mit WARP wird das Original mitgeschnitten. Klick lädt nur noch ohne Sample.
+- **Follow GENRA:** GENRA CHOP meldet sich am Link-Hub der GENRA-Plugins an (Kopie von `link/` aus dem GENRA-Repo) und
+  legt seine Spuren im Ausgangs-Layout von GENRA ab; die GENRA-Instrumente (ab GENRA 2.39.0) können ihm folgen.
+- **GENRA CHOP FX:** ohne Kabel von GENRA CHOP (Sound an IN: CHOP L/R oder CHOP + BREAK; Clock und Reset), Rechtsklick;
+  gelbe Segmente über IN L/R, CLK, RST; Kabel gewinnt. Pegelausgleich pro Effekt (bei Grundeinstellung etwa so laut
+  wie trocken, im FX-Test gemessen und geprüft); Presets „Spaced Out“ und „Robot Talk“ leiser.
+- **Mac:** Build für Intel und Apple Silicon.
+
 ### GENRA CHOP 2.5.0
 - **GENRA CHOP:**
   - **LOOP** (rechts in der WARP-Leiste): das ganze Sample läuft als Loop im Takt (Start bei Takt 1, neu nach jeder

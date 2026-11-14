@@ -12,10 +12,8 @@ ABLAUF Drag & Drop und Scrollbalken – in Rack testen (WARP-Qualität und Reche
 2.5.0 (13.11.2026): LOOP-Modus (WARP-Leiste, ABLAUF pro Pad), DENS neu (Hats früher, Clap selten, Tamburin
 seltener), Break-Stücke für Clap/Rim/PERC, FX-Effektfeld lesbar – in Rack testen (LOOP mit verschiedenen Samples und
 Längen, LOOP über ABLAUF-Teile).
+2.6.0 (14.11.2026): Schnitte von Hand im Wellenform-Fenster, Follow GENRA mit GENRA CHOP als Quelle (braucht GENRA /
+GENRA Instruments 2.39.0), FX ohne Kabel, FX-Pegel angeglichen – in Rack testen.
 Offen (Details in `README.md`):
-- Wellenform-Fenster: Klick lädt ein Sample, sonst Chops mit der Maus verschieben (erst nach dem Test von GENRA CHOP).
-- Follow GENRA für die GENRA-Instrumente (DRUM-X, SCHLAG, FUNKE …): GENRA CHOP ist dort noch keine Quelle
-  (`Follow.cpp` im GENRA-Repo kennt nur GENRA und GENRA BOX).
-- GENRA CHOP FX: kabellos verbinden (Sound und Clock von GENRA CHOP ohne Kabel) – im Code vorbereitet (Quelle als
-  eigene Wahl im Patch, Platz für die Leuchtsegmente über IN L/R und CLK), noch nicht gewünscht.
-- GENRA CHOP FX: Effekte und Presets beim Anhören nachstimmen.
+- FX-Effekte und -Presets nach Gehör feinstimmen (Pegel sind gemessen angeglichen).
+- Der PITCH-Regler verschiebt die Chops, aber noch nicht die erkannten Akkorde für Bass und Pads.

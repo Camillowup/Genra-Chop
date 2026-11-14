@@ -537,6 +537,29 @@ static bool alwaysPrep(int f) {
 	return f == SUPERFILT || f == AUTOWAH || f == PHASER || f == RINGMOD || f == LOWCUT || f == HIGHCUT;
 }
 
+// 2.6.0: the effects about as loud as the dry signal at their default settings (measured with a beat and a chord,
+// test/fx_test.cpp prints it): a level trim per effect, in dB. Inserts: on what the effect makes; echoes / reverb: on
+// what they add. The cut effects (LOW / HIGH CUT) and the stops stay as they are (being quieter is what they do).
+static const float TRIM_DB[NUM_FX] = {
+	1.5f, -1.5f, 0.f, 0.f, 10.f, 0.f, 0.f,        // VINYL CASSETTE LOFI WOWFLUT RADIO DUST WARP
+	-2.5f, -2.5f, 0.f, 2.5f, 18.f, 7.5f,         // FILTDRIVE SUPERFILT ISOLATOR RESONATOR TALK AUTOWAH
+	-6.f, -6.f, -4.f, 1.f, 1.5f,                 // SATURATOR FUZZ FOLDER COMP GATER
+	-1.5f, -1.5f, -2.f, -1.5f, -2.5f,            // DELAY TAPEECHO PINGPONG REVDELAY REVERB
+	1.f, 0.5f, 0.f, 3.5f, 2.5f, 0.f,             // CHORUS FLANGER PHASER RINGMOD TREMOLO VIBRATO
+	0.f, 0.5f, 1.f, 0.f, 0.f, 0.f, 0.f, -2.f,    // LOOPER SCATTER STOPPER TAPESTOP BACKSPIN TAPESTART DOWNER SUBOCT
+	0.f, 0.f,                                    // LOWCUT HIGHCUT
+};
+static float trimOf(int f) {
+	static float lin[NUM_FX];
+	static bool made = false;
+	if (!made) {
+		for (int i = 0; i < NUM_FX; i++)
+			lin[i] = std::pow(10.f, TRIM_DB[i] / 20.f);
+		made = true;
+	}
+	return f >= 0 && f < NUM_FX ? lin[f] : 1.f;
+}
+
 void Bus::process(float& L, float& R, const Tempo& t) {
 	// ---- the effect changes: out, change, in (5 ms each)
 	if (want != cur) {
@@ -595,8 +618,9 @@ void Bus::process(float& L, float& R, const Tempo& t) {
 		float dry = 1.f - amt * std::max(0.f, 2.f * mix - 1.f);
 		float wet = std::min(1.f, 2.f * mix);
 		keepNow = dry;
-		L = L * dry + wL * wet;
-		R = R * dry + wR * wet;
+		float tr = trimOf(cur);
+		L = L * dry + wL * wet * tr;
+		R = R * dry + wR * wet * tr;
 		if (!on) {
 			if (std::fabs(wL) + std::fabs(wR) < 1e-4f) { // -80 dB: gone
 				if (++quiet > (int) (0.25f * sr))
@@ -621,6 +645,9 @@ void Bus::process(float& L, float& R, const Tempo& t) {
 	keepNow = 1.f - amt;
 	float yL = L, yR = R;
 	runInsert(yL, yR, t);
+	float tr = trimOf(cur);
+	yL *= tr;
+	yR *= tr;
 	L += (yL - L) * amt;
 	R += (yR - R) * amt;
 }
@@ -1174,7 +1201,7 @@ const Preset PRESETS[] = {
 	{"Telephone Hook",    {RADIO, DELAY},         {{0.5f, 0.2f, 0.3f},  {0.55f, 0.35f, 0.35f}}, ROUTE_12},
 	{"Dilla Wobble",      {WOWFLUT, SUPERFILT},   {{0.45f, 0.25f, 1.f}, {0.6f, 0.4f, 0.3f}},    ROUTE_12},
 	{"Underwater",        {FILTDRIVE, CHORUS},    {{0.25f, 0.5f, 0.2f}, {0.25f, 0.7f, 0.6f}},   ROUTE_12},
-	{"Spaced Out",        {PINGPONG, REVERB},     {{0.45f, 0.55f, 0.4f}, {0.75f, 0.4f, 0.45f}}, ROUTE_12},
+	{"Spaced Out",        {PINGPONG, REVERB},     {{0.45f, 0.5f, 0.3f}, {0.75f, 0.4f, 0.35f}},  ROUTE_12},
 	{"Stutter Break",     {LOOPER, ISOLATOR},     {{0.33f, 0.5f, 1.f},  {0.5f, 0.5f, 0.5f}},    ROUTE_12},
 	{"Chopped & Screwed", {DOWNER, REVERB},       {{0.5f, 0.3f, 1.f},   {0.55f, 0.3f, 0.3f}},   ROUTE_12},
 	{"Trap Gate",         {GATER, DELAY},         {{0.6f, 0.9f, 0.15f}, {0.45f, 0.35f, 0.3f}},  ROUTE_12},
