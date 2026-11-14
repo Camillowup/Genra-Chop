@@ -299,6 +299,18 @@ int main() {
 		for (size_t i = 0; i < b.data.frames(); i++)
 			mx = std::max(mx, std::fabs(b.data.L[i]));
 		CHECK(mx > 0.5f && mx <= 0.9f, "own break: peak %.2f", mx);
+		{
+			// its level over time (every 0.25 s), shown
+			printf("  own break level:");
+			size_t q = 11025;
+			for (size_t k = 0; k + q <= b.data.frames(); k += q) {
+				float e = 0.f;
+				for (size_t j = k; j < k + q; j++)
+					e += b.data.L[j] * b.data.L[j];
+				printf(" %.3f", std::sqrt(e / q));
+			}
+			printf("\n  samples at 100, 1000, 30000: %f %f %f\n", b.data.L[100], b.data.L[1000], b.data.L[30000]);
+		}
 		analyse(b, CM_TRANSIENT, BRK_PADS);
 		brkAssign(b, b.voicePad); // by the sound of each hit (the module does so)
 		{
