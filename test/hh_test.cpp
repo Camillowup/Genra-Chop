@@ -1,12 +1,14 @@
 // GENRA CHOP without Rack: the generator for every style, and the analysis of a made-up sample (four chords
 // played as stabs) - the chords and the key have to come out right. Build: g++ -std=c++11 -O2 -Isrc test/hh_test.cpp
-// src/hh/Core.cpp src/hh/Styles.cpp src/hh/Chop.cpp src/hh/Song.cpp -o hh_test
+// src/hh/Core.cpp src/hh/Styles.cpp src/hh/Chop.cpp src/hh/Song.cpp src/hh/Break.cpp -o hh_test
 #include "hh/Chop.hpp"
 #include "hh/Song.hpp"
+#include "hh/Break.hpp"
 #include <cstring>
 #include <cstdio>
 #include <cmath>
 #include <cstdlib>
+#include <algorithm>
 
 using namespace hh;
 
@@ -110,7 +112,7 @@ int main() {
 		st.erase(st.begin() + 3);
 		recut(e, st);
 		CHECK(e.info.count == n0 - 1, "delete: %d chops, want %d", e.info.count, n0 - 1);
-		st.push_back(e.data.frames() / 2 + 123);
+		st.push_back(e.data.frames() / 2 + 4000); // between two cuts (a cut sits on every stab)
 		recut(e, st);
 		CHECK(e.info.count == n0, "insert: %d chops, want %d", e.info.count, n0);
 		for (int i = 1; i < e.info.count; i++)
@@ -137,6 +139,66 @@ int main() {
 		generate(p, -1, set, cs.info, pads, 7 + st, false, STYLES[st].bpm);
 		mutateChops(p, set, cs.info, pads, 3, 1.f, STYLES[st].bpm);
 	}
+	// 2.7.0: every kind of chop pattern from every style: events in range, never empty, HOLD long, SPARSE thin
+	for (int st = 0; st < NUM_STYLES; st++)
+		for (int k = 0; k < NUM_CHOP_PATS; k++) {
+			Settings s2 = set;
+			s2.style = st;
+			s2.chopPat = k;
+			Pattern q;
+			generate(q, -1, s2, cs.info, pads, 300 + st * 11 + k, false, STYLES[st].bpm);
+			int n = 0;
+			float longest = 0.f;
+			for (int s = 0; s < LEN; s++) {
+				const ChopEv& e = q.chop[s];
+				if (e.pad < 0)
+					continue;
+				n++;
+				longest = std::max(longest, e.len);
+				CHECK(e.pad < cs.info.count && e.len > 0.f && e.len <= 16.f && e.pitch > -24 && e.pitch < 24,
+				      "%s %s: event at %d out of range (pad %d len %.1f pitch %d)", STYLES[st].name, CHOP_PAT_NAMES[k], s, e.pad,
+				      e.len, e.pitch);
+			}
+			CHECK(n >= 2, "%s %s: only %d chop events", STYLES[st].name, CHOP_PAT_NAMES[k], n);
+			if (k == CP_HOLD)
+				CHECK(longest >= 8.f, "%s HOLD: longest chop %.1f steps", STYLES[st].name, longest);
+			if (k == CP_SPARSE)
+				CHECK(n <= 3 * BARS, "%s SPARSE: %d events", STYLES[st].name, n);
+		}
+	// AUTO picks every kind somewhere, and not always the same one for a style
+	{
+		int seen[NUM_CHOP_PATS] = {};
+		for (int st = 0; st < NUM_STYLES; st++)
+			for (int i = 0; i < 20; i++)
+				seen[autoChopPat(st, (i + 0.5f) / 20.f)]++;
+		for (int k = 1; k < NUM_CHOP_PATS; k++)
+			CHECK(seen[k] > 0, "AUTO never picks %s", CHOP_PAT_NAMES[k]);
+		CHECK(seen[0] == 0, "AUTO picks AUTO");
+	}
+	// 2.7.0: the grooves: half-time puts the snare on the 3, minimal leaves only kick, snare, hat
+	for (int st = 0; st < NUM_STYLES; st++)
+		for (int g = 0; g < NUM_GROOVES; g++) {
+			Settings s2;
+			s2.style = st;
+			s2.drumMode = g;
+			Pattern q;
+			generate(q, T_DRUMS, s2, SampleInfo(), pads, 77 + st, false, STYLES[st].bpm);
+			for (int v = 0; v < DRUMS; v++)
+				for (int s = 0; s < LEN; s++)
+					CHECK(q.drum[v][s].vel <= 1.f && q.drum[v][s].off >= -0.46f && q.drum[v][s].off <= 0.46f,
+					      "%s %s: hit out of range", STYLES[st].name, GROOVE_NAMES[g]);
+			if (g == G_HALF && st != 25)
+				for (int b = 0; b < BARS; b++)
+					CHECK(q.drum[SNARE][b * STEPS + 8].vel > 0.f, "%s HALF: no snare on the 3 in bar %d", STYLES[st].name, b + 1);
+			if (g == G_MINIMAL)
+				for (int v : {CLAP, RIM, OH, TOM, PERC})
+					for (int s = 0; s < LEN; s++)
+						CHECK(q.drum[v][s].vel == 0.f, "%s MINIMAL: voice %d plays", STYLES[st].name, v);
+			if (g == G_DRUNK)
+				for (int s = 0; s < LEN; s++)
+					CHECK(q.drum[KICK][s].off == 0.f, "%s DRUNK: the kick moved", STYLES[st].name);
+		}
+
 	// a lock keeps a pad's events through NEW
 	set.style = 5;
 	generate(p, T_CHOP, set, cs.info, pads, 5, false, 92.f);
@@ -227,6 +289,56 @@ int main() {
 	SampleData back;
 	std::string err;
 	CHECK(readWav(w, back, err), "written chop does not read back: %s", err.c_str());
+	// ---- GENRA CHOP BREAK (2.7.0): its own break is cut into hits, the kick is a low chop at the start, the pattern
+	// puts the chops where they sit
+	{
+		ChopSet b;
+		synthBreak(b.data, 44100.f);
+		CHECK(b.data.frames() > 44100 * 4 && b.data.frames() < 44100 * 6, "own break: %d frames", (int) b.data.frames());
+		float mx = 0.f;
+		for (size_t i = 0; i < b.data.frames(); i++)
+			mx = std::max(mx, std::fabs(b.data.L[i]));
+		CHECK(mx > 0.5f && mx <= 0.9f, "own break: peak %.2f", mx);
+		analyse(b, CM_TRANSIENT, BRK_PADS);
+		brkAssign(b, b.voicePad); // by the sound of each hit (the module does so)
+		printf("own break: %d chops, %.1f BPM, %d bars, kick on chop %d, snare on chop %d\n", b.info.count, b.bpm, brkBars(b),
+		       b.voicePad[KICK] + 1, b.voicePad[SNARE] + 1);
+		CHECK(b.info.count >= 10 && b.info.count <= BRK_PADS, "own break: %d chops", b.info.count);
+		CHECK(std::fabs(b.bpm - 96.f) < 2.f, "own break: tempo %.1f, want 96", b.bpm);
+		CHECK(brkBars(b) == 2, "own break: %d bars, want 2", brkBars(b));
+		CHECK(b.voicePad[KICK] >= 0 && b.voicePad[SNARE] >= 0 && b.voicePad[hh::CH] >= 0, "own break: voices missing");
+		for (int v = 0; v < DRUMS; v++)
+			for (int w = v + 1; w < DRUMS; w++)
+				CHECK(b.voicePad[v] < 0 || b.voicePad[v] != b.voicePad[w], "own break: voices %d and %d on one chop", v, w);
+		{
+			// the snare chop starts on a snare step of the made-up break (beats 2 and 4)
+			double sps = 44100.0 * 60.0 / 96.0 / 4.0;
+			int st = (int) std::lround(b.cutStart[b.voicePad[SNARE]] / sps);
+			CHECK(st % 8 == 4, "own break: the snare chop sits on step %d", st + 1);
+		}
+		CHECK(b.info.chop[b.voicePad[KICK]].centroid < b.info.chop[b.voicePad[SNARE]].centroid, "own break: kick brighter than snare");
+		BrkPat bp;
+		brkGenerate(bp, b, brkBars(b), b.voicePad, 5);
+		int ev = 0;
+		for (int s = 0; s < LEN; s++)
+			if (bp.ev[s].pad >= 0) {
+				ev++;
+				CHECK(bp.ev[s].pad < b.info.count && bp.ev[s].len >= 1.f, "break pattern: bad event at %d", s);
+			}
+		CHECK(ev >= 2 * b.info.count, "break pattern: %d events for %d chops over 4 bars", ev, b.info.count);
+		CHECK(bp.ev[0].pad == 0, "break pattern: step 1 plays chop %d", bp.ev[0].pad + 1);
+		for (int s = 0; s < LEN; s += STEPS)
+			CHECK(bp.dice[s][D_SHUFFLE] >= 1.f, "break pattern: the one of bar %d may be shuffled", s / STEPS + 1);
+		for (int p2 = 0; p2 < b.info.count; p2++)
+			for (int r = 0; r < 20; r++) {
+				int q = brkSwap(b, b.voicePad, p2, r);
+				CHECK(q >= 0 && q < b.info.count && q != p2, "brkSwap(%d) = %d", p2, q);
+			}
+		bp.clear();
+		for (int s = 0; s < LEN; s++)
+			CHECK(bp.ev[s].pad < 0 && bp.dice[s][D_STUTTER] >= 1.f, "break pattern: CLEAR left something");
+	}
+
 	printf(fails ? "%d FAILED\n" : "all good\n", fails);
 	return fails ? 1 : 0;
 }

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // GENRA CHOP (was GENRA HIP-HOP): the module. The engine (hh/Core) makes the patterns; this plays them (clock, swing, the drunk
-// timing, rolls), plays the sample's chops and the break's hits, takes the pads from the mouse and MIDI, records them
+// timing, rolls), plays the sample's chops (the break: GENRA CHOP BREAK), takes the pads from the mouse and MIDI, records them
 // with REC, keeps the undo steps, loads and analyses samples in a worker thread, exports MIDI and the chops.
 #include "GenraChopModule.hpp"
 #include "ChopUI.hpp"
@@ -487,7 +487,7 @@ struct GenraChopWidget : ModuleWidget, ml::LearnHost {
 				return;
 			float now = (float) system::getTime();
 			if (!m->running && now - lastStop < 0.5f)
-				m->reqKill = true; // twice: cut the chops and the break too
+				m->reqKill = true; // twice: cut the chops still ringing too
 			m->running = false;
 			lastStop = now;
 		});
@@ -510,7 +510,6 @@ struct GenraChopWidget : ModuleWidget, ml::LearnHost {
 		knob<HHKnobSmall>(hhl::BPM, m, M::BPM_PARAM, "BPM");
 		knob<HHKnobSmall>(hhl::SWING, m, M::SWING_PARAM, "SWING");
 		knob<HHKnobSmall>(hhl::VOL, m, M::VOL_PARAM, "CHOP level");
-		knob<HHKnobSmall>(hhl::BRK, m, M::BRK_PARAM, "BREAK level");
 		// LCD, fields
 		lcd = at<HHLcd>(hhl::LCD);
 		lcd->module = m;
@@ -605,8 +604,8 @@ struct GenraChopWidget : ModuleWidget, ml::LearnHost {
 			};
 			learnButton(b, string::f("bank%d", i), string::f("PAD BANK %c", 'A' + i));
 		}
-		// CHOP
-		HHField* mode = at<HHField>(hhl::MODE);
+		// CHOP: the cut (narrow since 2.7.0: its text shrinks to fit) and the kind of chop pattern next to it
+		HHField* mode = at<LoopBarsField>(hhl::MODE);
 		mode->value = [=]() { return std::string(CHOP_MODES[m ? m->chopMode : 0]); };
 		mode->count = []() { return (int) NUM_CHOP_MODES; };
 		mode->current = [=]() { return m ? m->chopMode : 0; };
@@ -616,6 +615,21 @@ struct GenraChopWidget : ModuleWidget, ml::LearnHost {
 				m->setChopMode(i);
 		};
 		learnField(mode, "chopmode", "CHOP mode");
+		HHField* cpat = at<LoopBarsField>(hhl::CPAT);
+		cpat->value = [=]() {
+			int k = m ? m->set.chopPat : 0;
+			return k == CP_AUTO ? std::string("PAT AUTO") : std::string(CHOP_PAT_NAMES[k]);
+		};
+		cpat->count = []() { return (int) NUM_CHOP_PATS; };
+		cpat->current = [=]() { return m ? m->set.chopPat : 0; };
+		cpat->item = [](int i) { return std::string(CHOP_PAT_TEXT[i]); };
+		cpat->choose = [=](int i) {
+			if (!m || i == m->set.chopPat)
+				return;
+			m->set.chopPat = i;
+			m->reqNew.fetch_or(1 << T_CHOP); // only the chop track is rolled anew
+		};
+		learnField(cpat, "choppat", "CHOP pattern");
 		knob<HHKnob>(hhl::MUTATE, m, M::MUTATE_PARAM, "MUTATE");
 		knob<HHKnob>(hhl::PITCH, m, M::PITCH_PARAM, "PITCH");
 		knob<HHKnob>(hhl::CHOPS, m, M::CHOPS_PARAM, "CHOPS");
@@ -745,7 +759,14 @@ struct GenraChopWidget : ModuleWidget, ml::LearnHost {
 				m->rewarp();
 			}
 		});
-		lp->colOf = [=]() { return m && m->loopPub.load() ? C_RED : nvgRGB(0x55, 0x53, 0x4f); };
+		lp->colOf = [=]() {
+			if (!m)
+				return nvgRGB(0x55, 0x53, 0x4f);
+			// 2.7.0: switched while playing, it blinks until the pattern comes round
+			if (m->loopPendPub.load() && std::fmod(system::getTime(), 0.4) < 0.2)
+				return nvgRGB(0x8a, 0x3a, 0x30);
+			return m->loopPub.load() ? C_RED : nvgRGB(0x55, 0x53, 0x4f);
+		};
 		learnButton(lp, "loop", "LOOP");
 		LoopBarsField* lb = at<LoopBarsField>(hhl::LBARS);
 		static const int LB[6] = {0, 1, 2, 4, 8, 16};
@@ -795,22 +816,22 @@ struct GenraChopWidget : ModuleWidget, ml::LearnHost {
 		const float* CL[4] = {hhl::TCLR0, hhl::TCLR1, hhl::TCLR2, hhl::TCLR3};
 		for (int t = 0; t < 4; t++) {
 			HHField* f = at<HHField>(TM[t]);
-			f->count = [t]() { return t == 0 ? 3 : t == 1 ? 4 : t == 2 ? 4 : 3; };
+			f->count = [t]() { return t == 0 ? (int) NUM_GROOVES : t == 1 ? 4 : t == 2 ? 4 : 3; };
+			// the drums: their GROOVE (2.7.0; the list says what each does, the field shows it short)
 			f->item = [t](int i) {
-				return std::string(t == 0 ? DRUM_MODES[i] : t == 1 ? BASS_MODES[i] : t == 2 ? MEL_MODES[i] : PAD_MODES[i]);
+				return std::string(t == 0 ? GROOVE_TEXT[i] : t == 1 ? BASS_MODES[i] : t == 2 ? MEL_MODES[i] : PAD_MODES[i]);
 			};
 			f->current = [=]() {
 				if (!m)
 					return 0;
 				return t == 0 ? m->set.drumMode : t == 1 ? m->set.bassMode : t == 2 ? m->set.melMode : m->set.padMode;
 			};
-			f->value = [=]() { return f->item(f->current()); };
+			f->value = [=]() { return t == 0 ? std::string(GROOVE_NAMES[f->current()]) : f->item(f->current()); };
 			f->choose = [=](int i) {
 				if (!m)
 					return;
 				(t == 0 ? m->set.drumMode : t == 1 ? m->set.bassMode : t == 2 ? m->set.melMode : m->set.padMode) = i;
-				if (t > 0)
-					m->reqNew.fetch_or(1 << t);
+				m->reqNew.fetch_or(1 << t); // the drums too: the groove is rolled in
 			};
 			const char* TN[4] = {"DRUMS", "BASS", "MELODY", "PADS"};
 			learnField(f, string::f("mode%d", t), string::f("%s mode", TN[t]));
@@ -850,8 +871,6 @@ struct GenraChopWidget : ModuleWidget, ml::LearnHost {
 			out(PO[i], M::PAD_OUTPUT + i);
 		out(hhl::CHOP_L, M::CHOP_L_OUTPUT);
 		out(hhl::CHOP_R, M::CHOP_R_OUTPUT);
-		out(hhl::BRK_L, M::BRK_L_OUTPUT);
-		out(hhl::BRK_R, M::BRK_R_OUTPUT);
 		out(hhl::CLK_OUT, M::CLK_OUTPUT);
 		out(hhl::RST_OUT, M::RST_OUTPUT);
 		out(hhl::BAR_OUT, M::BAR_OUTPUT);
@@ -973,11 +992,6 @@ struct GenraChopWidget : ModuleWidget, ml::LearnHost {
 		std::string root = hhx::sampleFolder();
 		menu->addChild(createMenuItem("Sample root folder…", root.empty() ? "not set" : system::getFilename(root),
 		                              []() { hhx::pickSampleFolder(); }));
-		menu->addChild(createMenuItem("Load break (drums)…", "", [=]() { m->loadBreak(); }));
-		menu->addChild(createMenuItem("Clear break", "", [=]() {
-			m->breakPath.clear();
-			m->set.drumMode = 0;
-		}));
 		menu->addChild(createBoolPtrMenuItem("SAVE writes the chops with their pitch and direction", "", &m->bakeChops));
 		menu->addChild(createMenuItem("Chop folder…", "", []() { hhx::pickChopFolder(); }));
 		menu->addChild(createMenuItem("Open chop folder", "", []() {

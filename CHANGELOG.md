@@ -3,6 +3,29 @@
 Was in welcher Version dazukam (neueste zuerst). Bis 2.4.0 lag GENRA CHOP im Repo von GENRA Test
 (`Camillowup/testmodulesvcv`, Ordner `genra-chop/`, davor als GENRA HipHop).
 
+### GENRA CHOP 2.7.0
+- **GENRA CHOP BREAK (neu, 36 HP):** ein Drum-Break zum Reinladen und Verwursten. Schnitt an den Schlägen (bis 16
+  Chops), jede Drum-Stimme aus dem Klang erkannt (oder von Hand: Stimme antippen, dann Pad); spielt auf die Drums von
+  GENRA CHOP (ohne Kabel) oder die acht Trigger-Eingänge (**Hits**), als Loop im Takt (**Loop**) oder als eigenes
+  Pattern (**Chop**); MIX: zum Kit dazu oder statt des Kits. MANGLE: PITCH, DECAY, STUTTER, SHUFFLE über die Würfel
+  des Patterns, NEW, REVERSE. PATTERN: LOCK, UNDO, CLEAR, COPY, PASTE, SAVE, ROLL mit RATE (1/8 bis 1/64, Triolen).
+  WARP (BEATS), TUNE, DRIVE, LEVEL, acht Einzelausgänge, MIX L/R, CV für Pitch, Stutter, Roll, NEW. NEW ALL und die
+  Teile im ABLAUF würfeln mit (ausser mit LOCK). Eigener Break dabei (GENRA FUNK BREAK, im Modul erzeugt).
+- **GENRA CHOP:**
+  - **PAT** neben MODE: acht Arten von Chop-Pattern (AUTO, ORDER, STABS, CALL+RESP, HOLD, MELODY, HALF ORIG, SPARSE);
+    eigene Chop-Rhythmen pro Stil-Familie, AUTO wählt nach Stil. ORDER spielt jeden Chop so lang, wie er ist (kein
+    Zerhacken mehr, ausser bei den losen Stilen wie Dilla).
+  - Die Chops folgen der Akkordfolge des Stils (pro Takt der passende Chop, bei pitchenden Stilen passend verstimmt);
+    Stabs nehmen Chops mit klarem Akkord vor blossen Kurz-Schnipseln.
+  - Schnitt genau vor dem Anschlag (Transient), 5 ms Fade am Chop-Ende (auch beim SAVE).
+  - **DRUMS:** Groove statt KIT / BREAK / BOTH: STYLE, HALF, DOUBLE, LAID BACK, DRUNK, MINIMAL.
+  - **Break entfernt** (BREAK-Regler, Buchsen BRK L/R, Laden im Menü): dafür GENRA CHOP BREAK. Alte Patches laden
+    (der Break wird ignoriert, Kabel an BRK L/R fallen weg).
+  - **LOOP:** bei laufendem Beat erst am Ende des Patterns an oder aus (der Taster blinkt bis dahin); die Chops
+    verstummen sauber (auch schon geplante oder noch klingende).
+- **GENRA CHOP ABLAUF:** die grüne LED überschneidet sich nicht mehr mit „LINK“.
+- **GENRA CHOP FX:** „CHOP + BREAK“ nimmt den Break von GENRA CHOP BREAK.
+
 ### GENRA CHOP 2.6.0
 - **GENRA CHOP:** Schneiden von Hand im Wellenform-Fenster: Chop-Linie ziehen (rastet an der leisesten Stelle ein),
   Doppelklick auf eine Linie = Chop weg, Doppelklick daneben = neuer Chop; Akkorde und Tonart neu, Pad-Nummern im

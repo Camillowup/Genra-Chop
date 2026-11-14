@@ -9,6 +9,7 @@ extern Model* modelGenraChop;
 extern Model* modelChopGrid;
 extern Model* modelChopAblauf;
 extern Model* modelChopFx;
+extern Model* modelChopBreak;
 
 // the knobs of the production-center look (res/HHKnob*.svg, from tools/chop_panel.py)
 struct HHKnob : app::SvgKnob {

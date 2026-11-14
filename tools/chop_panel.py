@@ -95,7 +95,7 @@ text(bx + 2.8, 9.6, "PRODUCTION CENTER", 1.9, INK_DIM, 700, "start", 0.35)
 comp("SPLAY", 80.4, 2.4, 15.6, 8.4)
 comp("STOP", 99.0, 2.4, 14.6, 8.4)
 comp("PLAY", 114.6, 2.4, 14.6, 8.4)
-for name, x, label in (("BPM", 141.5, "BPM"), ("SWING", 155.0, "SWING"), ("VOL", 168.5, "CHOP"), ("BRK", 182.0, "BREAK")):
+for name, x, label in (("BPM", 155.0, "BPM"), ("SWING", 168.5, "SWING"), ("VOL", 182.0, "CHOP")):  # BREAK went (2.7.0: GENRA CHOP BREAK)
     comp(name, x, 6.0)
     text(x, 12.6, label, 1.45, INK, 700)
 
@@ -122,8 +122,11 @@ for i in range(4):
 
 rect(55.5, 41.2, 41.5, 50.6, SECTION, 1.2, EDGE)
 text(57.0, 46.6, "CHOP", 2.0, INK, 900, "start", 0.3)
-rect(67, 42.4, 29, 6.2, GRAPH, 0.8)
-comp("MODE", 67, 42.4, 29, 6.2)
+# 2.7.0: the cut (Transient / Equal) and, next to it, the kind of chop pattern (PAT)
+rect(66.2, 42.4, 14.6, 6.2, GRAPH, 0.8)
+comp("MODE", 66.2, 42.4, 14.6, 6.2)
+rect(81.6, 42.4, 14.6, 6.2, "#7a2e22", 0.8)
+comp("CPAT", 81.6, 42.4, 14.6, 6.2)
 for name, x, label in (("MUTATE", 61.4, "MUTATE"), ("PITCH", 71.3, "PITCH"), ("CHOPS", 81.2, "CHOPS"), ("MOVE", 91.1, "MOVE")):
     comp(name, x, 56.4)
     text(x, 64.1, label, 1.45, INK, 700)
@@ -191,10 +194,6 @@ x = 52.0
 plate(x, 8, Y1)
 for i, lb in enumerate(("KICK", "SNR", "CH", "OH", "CLAP", "RIM", "TOM", "PERC")):  # GENRA CHOP's own order
     jack(f"DRUM{i}", x + i * J, Y1, lb, True)
-x = 134.0
-plate(x, 2, Y1)
-jack("BRK_L", x, Y1, "BRK L", True)
-jack("BRK_R", x + J, Y1, "BRK R", True)
 x = 160.0
 plate(x, 3, Y1)
 jack("CLK_OUT", x, Y1, "CLK", True)
@@ -282,7 +281,7 @@ if "--preview" in sys.argv:
     for k, v in comps.items():
         if len(v) == 2:
             big = k in ("MUTATE", "PITCH", "CHOPS", "MOVE") or k.startswith(("DENS", "TK2_"))
-            hdr = k in ("BPM", "SWING", "VOL", "BRK")
+            hdr = k in ("BPM", "SWING", "VOL")
             if big or hdr:
                 r = 4.2 if big else 3.3
                 e(f'<circle cx="{v[0]}" cy="{v[1]}" r="{r}" fill="#2e2d2b"/><circle cx="{v[0]}" cy="{v[1]}" r="{r*0.86}" fill="{GRAPH}"/>'
@@ -332,10 +331,12 @@ if "--preview" in sys.argv:
                 text(x + 2, y + 4.4, "90s > EAST COAST BOOM BAP", 2.4, "#24301a", 700, "start", check=False)
                 text(x + 2, y + 8.4, "92 BPM   F#m   SWING 58%", 2.2, "#24301a", 700, "start", check=False)
                 text(x + 2, y + 12.0, "SMPL soul_loop_03   KEY:AUTO", 1.9, "#3a4a2a", 700, "start", check=False)
+            elif k == "CPAT":
+                text(x + 1.0, y + h / 2 + 0.6, "PAT AUTO v", 1.5, CREAM, 700, "start", check=False)
             elif k in ("ERA", "STYLE", "KEY", "MODE") or k.startswith("TMODE"):
                 lab = {"ERA": "ERA 90s", "STYLE": "STYLE  East Coast", "KEY": "KEY Auto F#m", "MODE": "Transient"}.get(k)
                 if lab is None:
-                    lab = ["KIT", "FOLLOW", "STAB", "SUSTAIN"][int(k[-1])]
+                    lab = ["STYLE", "FOLLOW", "STAB", "SUSTAIN"][int(k[-1])]
                 text(x + 1.5, y + h / 2 + 0.7, lab + " v", 1.7, CREAM, 700, "start", check=False)
             elif k == "WAVE":
                 import math

@@ -4,9 +4,10 @@
 
 Ein Hip-Hop-Beat-Generator im Look einer alten Production Center (beiges Gehäuse, graue Pads, Akai-Rot, grünes LCD).
 Eigenes Plugin (**GENRA CHOP**, Slug `GenraChop`; bis 2.1.0 hiess es GENRA HipHop, bis 2.4.0 lag es im Repo von
-GENRA Test) unter der Marke **Genra**. Vier Module in einer Datei: **GENRA CHOP** (38 HP),
-**GENRA CHOP GRID** (der Grid-Editor, 44 HP), ab 2.2.0 **GENRA CHOP ABLAUF** (der Song-Arranger, 26 HP) und ab 2.3.0
-**GENRA CHOP FX** (zwei Effekt-Busse zum Live-Spielen nach Vorbild SP-404, 36 HP).
+GENRA Test) unter der Marke **Genra**. Fünf Module in einer Datei: **GENRA CHOP** (38 HP),
+**GENRA CHOP GRID** (der Grid-Editor, 44 HP), ab 2.2.0 **GENRA CHOP ABLAUF** (der Song-Arranger, 26 HP), ab 2.3.0
+**GENRA CHOP FX** (zwei Effekt-Busse zum Live-Spielen nach Vorbild SP-404, 36 HP) und ab 2.7.0 **GENRA CHOP BREAK**
+(ein Drum-Break zum Reinladen und Verwursten, 36 HP).
 Patches mit dem alten GENRA HipHop laden nicht mehr (neuer Slug).
 
 ![Panel](docs/genra_chop.png)
@@ -35,9 +36,9 @@ Herkunft und Lizenztexte in `licenses/`.
 
 ## Bedienung
 
-**Kopf:** STOP und PLAY (ab 2.3.0 grösser): STOP hält an und springt auf Takt 1 (zweimal STOP schneidet auch Chops und Break ab), PLAY startet bei
-Takt 1 (ohne Kabel im RUN-Eingang). **BPM**, **SWING** (50 % gerade bis 75 %), **CHOP**
-(Lautstärke der Chops) und **BREAK** (Lautstärke des Breaks).
+**Kopf:** STOP und PLAY (ab 2.3.0 grösser): STOP hält an und springt auf Takt 1 (zweimal STOP schneidet auch die noch klingenden Chops ab), PLAY startet bei
+Takt 1 (ohne Kabel im RUN-Eingang). **BPM**, **SWING** (50 % gerade bis 75 %) und **CHOP**
+(Lautstärke der Chops). Der Break hat ab 2.7.0 sein eigenes Modul, **GENRA CHOP BREAK** (siehe unten).
 
 **Display:** Jahrzehnt und Stil, Tempo, Tonart (ein `*` heisst: von Hand gesetzt), Swing, Takt; darunter das Sample
 (Name, Anzahl Chops, ob die Tonart aus dem Sample kommt) oder der Stand der Analyse.
@@ -61,7 +62,18 @@ Controller nichts).
 
 **CHOP:**
 - **MODE:** Transient (an den stärksten Anschlägen geschnitten) oder Equal (gleich lange Teile). Ein Wechsel
-  schneidet neu.
+  schneidet neu. Ab 2.7.0 sitzt jeder Transient-Schnitt genau vor dem Anschlag (an der leisesten Stelle kurz davor),
+  so fehlt keinem Chop der Anfang seines Schlags; jeder Chop blendet am Ende 5 ms aus (auch beim SAVE), damit nichts
+  knackst.
+- **PAT** (ab 2.7.0, das dunkelrote Feld neben MODE): die Art des Chop-Patterns. **AUTO** (der Stil wählt),
+  **ORDER** (die Chops wie im Sample, jeder so lang, wie er ist), **STABS** (kurze Hits auf einem Rhythmus),
+  **CALL+RESP** (Takt 1 und 3 rufen, Takt 2 und 4 antworten mit anderen Chops), **HOLD** (wenige lange Chops, ein
+  Akkord pro Takt), **MELODY** (ein Chop spielt eine kleine Melodie in der Tonart), **HALF ORIG** (ein Takt wie im
+  Sample, der nächste umgestellt), **SPARSE** (ein, zwei Chops pro Takt, viel Platz für Rap). Ein Wechsel würfelt nur
+  die Chop-Spur neu. Jeder Stil hat eigene Chop-Rhythmen (Boom Bap neben dem Beat, Trap sparsam und lang, Soul Chop
+  schnelle Wechsel, Lo-Fi ruhig, Funk 16tel-synkopiert, Drill 3-3-2 …) und mag andere Arten. Die Chops folgen der
+  Akkordfolge des Stils: pro Takt werden die Chops gewählt, deren erkannter Akkord passt (bei Stilen, die pitchen,
+  auch passend verstimmt); für Stabs werden Chops mit einem klaren Akkord vor blossen Kurz-Schnipseln genommen.
 - **CHOPS** (ab 2.3.0, statt DUST): wie viele Chops, 4 bis 64 (Standard 16). Bleibt der Regler kurz stehen, wird das
   Sample neu geschnitten (wie ein neuer MODE: das Chop-Pattern wird neu gewürfelt). Findet Transient weniger
   Anschläge, werden die längsten Teile halbiert; was dann noch fehlt, bleibt leer (das Display zeigt die Anzahl).
@@ -99,7 +111,9 @@ Controller nichts).
   Es startet mit PLAY auf Takt 1 und beginnt nach jeder LOOP-Länge neu; sein Tempo passt immer genau auf diese Länge,
   so läuft es nie vom Beat weg. LOOP schaltet WARP mit ein. Das Feld daneben: die Länge, **AUTO** (aus der Länge des
   Samples beim laufenden Tempo, 1, 2, 4, 8 oder 16 Takte) oder von Hand. Das Chop-Pattern pausiert, solange LOOP an
-  ist, die Pads bleiben darüber spielbar. LOOP wird mit dem Pattern gespeichert: GENRA CHOP ABLAUF merkt es sich pro
+  ist (ab 2.7.0 sauber: auch die gerade noch klingenden oder schon geplanten Chops verstummen), die Pads bleiben
+  darüber spielbar. Ab 2.7.0 setzt LOOP bei laufendem Beat erst am Ende des Patterns ein (oder aus); bis dahin blinkt
+  der Taster. LOOP wird mit dem Pattern gespeichert: GENRA CHOP ABLAUF merkt es sich pro
   Pad, ein Teil kann also loopen und der nächste choppen. Im Wellenform-Fenster steht „LOOP 4 BARS“, eine Linie zeigt,
   wo der Loop gerade ist.
 - **REC:** was du auf den Pads spielst (Maus oder MIDI), landet auf dem nächsten Schritt in der Chop-Spur (ein
@@ -117,15 +131,16 @@ Controller nichts).
 
 **Spuren:** je ein Feld für die Spielart, **DENS** (Dichte), **NEW** und (ab 2.4.0) **CLEAR**: die Spur leer, die
 Akkorde bleiben; NEW oder NEW ALL füllt sie wieder.
-- **DRUMS:** KIT (nur Trigger), BREAK (nur der Break), BOTH. **CHOP** = MIDI-Chop (Beats wiederholen, stottern,
-  auslassen, umdrehen). Einen Break lädst du per Rechtsklick › Load break: die Hits werden nach Helligkeit auf Kick,
-  Snare, Hats … verteilt und von den Drum-Hits gespielt (Ausgang BRK L/R). Ab 2.4.0 bringt **DENS** nach rechts
+- **DRUMS:** ab 2.7.0 der **Groove** (statt KIT / BREAK / BOTH): **STYLE** (wie der Stil spielt), **HALF**
+  (Half-time: Snare auf der 3, schwerer), **DOUBLE** (Double-time: Kick und Snare doppelt so schnell, Hats auf
+  16tel), **LAID BACK** (Snare und Hats leicht zu spät), **DRUNK** (Dilla-mässig, alles leicht verschoben ausser der
+  Kick), **MINIMAL** (nur Kick, Snare und Hat). Ein Wechsel würfelt die Drums neu. **CHOP** = MIDI-Chop (Beats
+  wiederholen, stottern, auslassen, umdrehen). Ab 2.4.0 bringt **DENS** nach rechts
   stiltypische Extras auf Stimmen, die der Stil leer lässt: Rim-Ghosts, Tamburin/Shaker auf PERC (bei Trap
   synkopiert), offene Hats bei Funk und Trap, Clap auf der Snare, ein Tom-Fill am Ende von Takt 4.
   Ab 2.5.0 kommen die **Hi-Hats** früh (ab etwa 30–40 %: Boom Bap bekommt leise Ghost-Hats zwischen den Achteln, Trap seine 16tel und Rolls früher, eine offene Hat vor Takt 1 öfter); der **Clap** kommt nur noch ab
   und zu (auf Takt 2 und / oder 4, ab etwa 80 %; Stile mit eigenem Clap behalten ihn); das **Tamburin** seltener und
-  leiser (ab etwa 75 %). Bei BREAK und BOTH spielen Clap, Rim und PERC keine snareähnlichen Break-Stücke mehr, sondern
-  hellere, hat-artige Stücke oder gar nichts.
+  leiser (ab etwa 75 %).
 - **BASS:** FOLLOW (Stil, folgt den Akkorden der Chops), ROOT+5, WALK, 808. **OCT** statt CHOP (kein MIDI-Chop).
   DENS ganz links: nur die Grundtöne (mindestens zwei pro Takt); nach rechts kommen Vorschläge vor der Snare,
   Oktavsprünge, Läufe in den nächsten Akkord und 16tel-Ghosts dazu. Die Grundtöne klingen bis kurz vor den nächsten
@@ -134,10 +149,10 @@ Akkorde bleiben; NEW oder NEW ALL füllt sie wieder.
 - **PADS:** SUSTAIN, STAB, SWELL (MOD-Ausgang steigt an); **CHOP** = MIDI-Chop.
 
 **Buchsen:** CLK (16tel; 24 / 48 PPQN im Menü), RST, RUN, NEW. Drums: 8 Trigger (Spannung = Velocity), ab 2.4.0
-in der Reihenfolge **Kick, Snare, CH, OH, Clap, Rim, Tom, Perc** (nur in GENRA CHOP und GRID; ABLAUF unverändert); Break L/R; CLK, RST, BAR (Trigger auf jeder Eins). Bass und Melodie: V/OCT, GATE, VEL, ACC, SLIDE.
+in der Reihenfolge **Kick, Snare, CH, OH, Clap, Rim, Tom, Perc** (nur in GENRA CHOP und GRID; ABLAUF unverändert); CLK, RST, BAR (Trigger auf jeder Eins). Die Buchsen BRK L/R sind ab 2.7.0 weg (alte Kabel daran fallen weg). Bass und Melodie: V/OCT, GATE, VEL, ACC, SLIDE.
 Pads: V/OCT und GATE poly 4, VEL, MOD. Chop L/R.
 
-**Rechtsklick:** Sample und Break laden, Break löschen, Chop-Ordner, **Export MIDI** (vier Takte, fünf Spuren: Drums
+**Rechtsklick:** Sample laden, Chop-Ordner, **Export MIDI** (vier Takte, fünf Spuren: Drums
 auf Kanal 10 mit GM-Noten, Bass, Melodie, Pads, Chop mit Pad 1 = C1, Pitch als Pitch-Bend ±12, Reverse als CC 20;
 ohne Dateifenster in den MIDI-Ordner aller GENRA-Module), MIDI-Eingang, Clock-Auflösung, MIDI control.
 
@@ -349,6 +364,59 @@ Returns. Verbunden wird vorerst nur mit Kabeln (Spur-Ausgänge von GENRA CHOP, s
   Pegelausgleich pro Effekt, gemessen in `test/fx_test.cpp`); LOW CUT, TAPE STOP und BACKSPIN sind absichtlich leiser,
   Echos und Hall kommen obendrauf. Die Presets „Spaced Out“ und „Robot Talk“ sind etwas gezähmt.
 
+## GENRA CHOP BREAK: ein Drum-Break zum Reinladen und Verwursten (36 HP, ab 2.7.0)
+
+![GENRA CHOP BREAK](docs/genra_chop_break.png)
+
+Ein Break (WAV) wird an seinen Schlägen geschnitten (höchstens 16 Chops), jeder Chop bekommt eine Drum-Stimme (Kick,
+Snare, CH, OH, Clap, Rim, Tom, Perc, aus dem Klang erkannt: Tiefen, Helligkeit, Ausklingen, Lautstärke), und so
+gespielt: auf die Drums von GENRA CHOP (oder auf die acht Trigger-Eingänge), als Loop im Takt oder als eigenes
+Pattern, und dabei verwurstet. Ohne eigenen Break spielt das Modul seinen eigenen: **GENRA FUNK BREAK** (zwei Takte Funk
+mit 96 BPM, im Modul selbst erzeugt, frei von fremden Rechten).
+
+**Verbindung:** steht es neben GENRA CHOP (oder neben GRID, ABLAUF oder FX, die neben GENRA CHOP stehen), verbindet es
+sich ohne Kabel (sonst das einzige GENRA CHOP im Patch, oder Rechtsklick › Connect to…). Es bekommt dann die Drum-Hits,
+Takt und Tempo; NEW ALL und jeder Teil-Wechsel im ABLAUF würfeln sein Pattern mit (ausser mit LOCK). Ein Kabel an CLK
+oder an einem Trigger-Eingang gewinnt.
+
+**Kopf:** **TUNE** (±12 Halbtöne, dazu der PITCH-Eingang in V/OCT), **DRIVE** (Sättigung auf der Summe), **LEVEL**.
+
+**Display:** Break (Name, Chops, Tempo; mit WARP „96>92 BPM“), Spielart und Mix, welche Chops Kick, Snare, CH und OH
+spielen, die Verbindung und der Takt.
+
+**PLAY:** **Hits** (jeder Drum-Hit von GENRA CHOP oder an einem Trigger-Eingang spielt den Chop seiner Stimme),
+**Loop** (der Break läuft im Takt, 16tel für 16tel; die MANGLE-Regler greifen pro Schritt ein), **Chop** (ein eigenes
+Pattern: die Chops dort, wo sie im Break sitzen, Takt 2 und 4 etwas abgewandelt). **MIX:** **Layer with kit** (die
+Trigger von GENRA CHOP spielen weiter) oder **Replace kit** (wo der Break spielt, bleiben die Trigger von GENRA CHOP
+still; bei Loop und Chop alle).
+
+**Wellenform:** der Break mit den Chop-Linien in der Farbe ihrer Stimme, die gelbe Linie zeigt, was gerade spielt.
+Darunter: **LOAD BREAK** (oder die WAV aufs Modul ziehen), **Transient / Equal**, **WARP** (der Break auf das Tempo
+gestreckt, BEATS: jeder Schlag rückt an seinen Platz), das Tempo, **x2** und **/2**, **CHOPS** (4 bis 16; bleibt der
+Regler kurz stehen, wird neu geschnitten).
+
+**Pads und Stimmen:** 16 Pads (unten 1–8, oben 9–16), jedes spielt seinen Chop; ein Farbschild zeigt, für welche
+Stimme er spielt. **Stimme zuweisen:** die Stimmen-Taste (z. B. KICK) antippen, sie leuchtet, dann das Pad mit dem Chop
+antippen. **Rechtsklick auf eine Stimme:** Mute (dunkelrot), Chop aus der Liste, alle Stimmen neu aus dem Klang. Unter
+jeder Stimme ihr **Level**.
+
+**PATTERN:** **LOCK** (das Pattern bleibt bei NEW ALL und ABLAUF-Teilen stehen; die NEW-Taste hier würfelt trotzdem),
+**UNDO** (bis 16 Schritte), **CLEAR** (Pattern leer: Chop schweigt, Hits und Loop spielen unverwurstet), **COPY** /
+**PASTE** (auch zwischen zwei BREAK-Modulen), **SAVE** (die Chops als WAV, mit ihrer Stimme im Namen, in den
+Chop-Ordner). **ROLL** (gedrückt halten, auch über den ROLL-Eingang): wiederholt den letzten Schlag im Takt, solange
+gehalten (Pattern und Hits pausieren derweil); **RATE** daneben: 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/32T, 1/64 (auch
+während des Rolls drehbar).
+
+**MANGLE:** das Pattern hat für jeden Schritt Würfel; die Regler sagen, wie viel davon live greift: **PITCH** (Schläge
+verstimmt: −12, −7, −5, −3, +3, +5, +7, +12), **DECAY** (wie lange ein Chop klingt, 10–100 %; im Loop wird er zum
+Gate), **STUTTER** (Schläge 2–4-mal im Schritt, auch über den STUT-Eingang), **SHUFFLE** (ein Schlag tauscht mit einem
+ähnlichen Chop; im Loop springt der Schritt ganze Schläge weit; die Eins jedes Takts bleibt). **NEW** würfelt neu,
+**REVERSE** (an: einzelne Schläge rückwärts).
+
+**Buchsen:** CLK (16tel), RST; acht Trigger-Eingänge (Spannung = Velocity; ohne Kabel die Drums von GENRA CHOP); PITCH
+(V/OCT), STUT (Gate), ROLL (Gate), NEW (Trigger). Acht Ausgänge, eine Stimme pro Buchse (mono), und MIX L/R. Für GENRA
+CHOP FX ohne Kabel: „Sound at IN from GENRA CHOP › CHOP + BREAK“ nimmt den Break mit.
+
 ## Noch nicht drin (Merkliste)
 
 - Der PITCH-Regler verschiebt die Chops, aber noch nicht die erkannten Akkorde für Bass und Pads.
@@ -374,3 +442,6 @@ Returns. Verbunden wird vorerst nur mit Kabeln (Spur-Ausgänge von GENRA CHOP, s
   (`findTempo`, im Test).
 - `tools/chop_panel.py` schreibt `res/GenraChop.svg`, die Knöpfe und `src/GenraChopLayout.hpp`; prüft, dass sich
   keine Schrift überlappt. Vorschau: `python3 tools/chop_panel.py --preview docs/genra_chop.png`.
+- GENRA CHOP BREAK (2.7.0): `src/hh/Break.*` (Pattern und Würfel, Zuordnung der Stimmen aus dem Klang, der eigene
+  Break; im Test), `src/ChopBreak.cpp` (Modul und Panel); `tools/break_panel.py` schreibt `res/ChopBreak.svg` und
+  `src/ChopBreakLayout.hpp` (Vorschau: `--preview docs/genra_chop_break.png`).

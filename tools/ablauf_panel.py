@@ -91,7 +91,7 @@ text(bx + 2.8, 9.6, "SONG ARRANGER", 1.9, INK_DIM, 700, "start", 0.35)
 comp("STOP", W - 30.0, 3.0, 12.0, 5.6)
 comp("PLAY", W - 17.0, 3.0, 12.0, 5.6)
 comp("LINK", W - 30.0, 11.2)
-text(W - 28.4, 11.8, "LINK", 1.4, INK, 700, "start", 0.3)
+text(W - 27.4, 11.8, "LINK", 1.4, INK, 700, "start", 0.3)  # 2.7.0: clear of the LED (it sits centred on LINK)
 
 # ---------------------------------------------------------------- the patterns: 4 x 4 pads, banks A-D
 PX0, PW = 4.0, 62.0

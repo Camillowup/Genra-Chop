@@ -33,7 +33,7 @@ jobs:
 
       - name: Test the engines (without Rack)
         run: |
-          g++ -std=c++11 -O2 -D_USE_MATH_DEFINES -Isrc test/hh_test.cpp src/hh/Core.cpp src/hh/Styles.cpp src/hh/Chop.cpp src/hh/Song.cpp -o hht.exe
+          g++ -std=c++11 -O2 -D_USE_MATH_DEFINES -Isrc test/hh_test.cpp src/hh/Core.cpp src/hh/Styles.cpp src/hh/Chop.cpp src/hh/Song.cpp src/hh/Break.cpp -o hht.exe
           ./hht.exe
           g++ -std=c++11 -O2 -D_USE_MATH_DEFINES -Isrc test/fx_test.cpp src/fx/FxEngine.cpp -o fxt.exe
           ./fxt.exe
@@ -51,6 +51,7 @@ jobs:
           test -f $D/plugin.dll
           test -f $D/res/GenraChop.svg
           test -f $D/res/ChopFx.svg
+          test -f $D/res/ChopBreak.svg
           test -f $D/res/HHKnob.svg
           test -f $D/licenses/RubberBand-COPYING.txt
           if objdump -p $D/plugin.dll | grep -iE "libstdc"; then echo "plugin.dll loads libstdc++"; exit 1; fi

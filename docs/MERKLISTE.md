@@ -14,6 +14,10 @@ seltener), Break-Stücke für Clap/Rim/PERC, FX-Effektfeld lesbar – in Rack te
 Längen, LOOP über ABLAUF-Teile).
 2.6.0 (14.11.2026): Schnitte von Hand im Wellenform-Fenster, Follow GENRA mit GENRA CHOP als Quelle (braucht GENRA /
 GENRA Instruments 2.39.0), FX ohne Kabel, FX-Pegel angeglichen – in Rack testen.
+2.7.0 (14.11.2026): GENRA CHOP BREAK (neu), PAT-Dropdown mit acht Chop-Pattern-Arten und Rhythmen pro Stil, Chops
+nach Akkordfolge, Schnitt vor dem Anschlag und Fade am Ende, DRUMS-Groove statt KIT/BREAK/BOTH, Break aus GENRA CHOP
+raus, LOOP am Pattern-Ende, ABLAUF LED/LINK – in Rack testen (BREAK mit eigenen Breaks, Hits/Loop/Chop, Replace kit,
+ROLL; PAT-Arten pro Stil; Groove-Modi; LOOP-Umschalten bei laufendem Beat).
 Offen (Details in `README.md`):
 - FX-Effekte und -Presets nach Gehör feinstimmen (Pegel sind gemessen angeglichen).
 - Der PITCH-Regler verschiebt die Chops, aber noch nicht die erkannten Akkorde für Bass und Pads.

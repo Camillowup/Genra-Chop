@@ -1400,7 +1400,7 @@ struct ChopAblaufWidget : AblaufWidgetBase {
 		};
 		ALed* led = new ALed;
 		led->box.size = Vec(6.f, 6.f);
-		led->box.pos = Vec(cal::LINK[0], cal::LINK[1] - 3.f);
+		led->box.pos = Vec(cal::LINK[0] - 3.f, cal::LINK[1] - 3.f); // centred on its point, clear of the text (2.7.0)
 		led->m = m;
 		addChild(led);
 		// banks

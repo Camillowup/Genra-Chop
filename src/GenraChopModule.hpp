@@ -443,9 +443,10 @@ struct SVoice {
 			env = std::min(envTarget, env + envStep);
 		else if (env > envTarget)
 			env = std::max(envTarget, env - envStep);
-		// the last 3 ms of the chop fade, so a cut never clicks
+		// the last 5 ms of the chop fade (2.7.0, was 3 ms; a quarter of a very short chop), so a cut never clicks
 		double left = rev ? (p - a) : (b - p);
-		float tail = (float) std::min(1.0, left / (0.003 * cs->data.sampleRate));
+		double fadeLen = std::max(8.0, std::min(0.005 * cs->data.sampleRate, (b - a) * 0.25));
+		float tail = (float) std::min(1.0, left / fadeLen);
 		float g = gain * env * tail;
 		L += yl * g;
 		R += yr * g;
@@ -542,15 +543,13 @@ struct GenraChop : Module {
 	bool lockChords = false;
 	int clockDiv = 1; // clock pulses per 16th: 1, 6 (24 PPQN), 12 (48 PPQN)
 	bool bakeChops = false; // SAVE writes the chops with their pitch and direction
-	std::string samplePath, breakPath;
+	std::string samplePath;
 
-	// ---- the sample and the break
+	// ---- the sample (the break has its own module since 2.7.0: GENRA CHOP BREAK)
 	std::shared_ptr<Loader> loader = std::make_shared<Loader>();
-	std::shared_ptr<Loader> brkLoader = std::make_shared<Loader>();
 	ChopSet* chops = nullptr; // the audio thread's (swapped in process())
-	ChopSet* brk = nullptr;
 	std::atomic<ChopSet*> trash[4];                        // old sets, deleted by the UI
-	std::atomic<ChopSet*> incoming{nullptr}, incomingBrk{nullptr}; // handed over by the UI
+	std::atomic<ChopSet*> incoming{nullptr};               // handed over by the UI
 	std::atomic<bool> taken{false};                        // the audio thread took a new sample (for the log)
 	void toTrash(ChopSet* c) {
 		if (!c)
@@ -586,8 +585,16 @@ struct GenraChop : Module {
 	float padMod = 0.f, padModInc = 0.f;
 	SVoice cv[2];
 	int cvNext = 0;
-	SVoice bv[4];
-	int bvNext = 0;
+	// ---- GENRA CHOP BREAK (2.7.0) next to it: it reads the drum hits here and may play instead of the kit
+	std::atomic<uint32_t> hitCount[DRUMS];   // +1 per drum hit (by voice, GENRA's order)
+	std::atomic<float> hitVel[DRUMS];
+	std::atomic<int> hitStep[DRUMS];         // the step it came on
+	std::atomic<uint32_t> newAllCount{0};    // +1 per NEW ALL (and new style): the break rolls along
+	std::atomic<uint32_t> brkReplace{0};     // bit per voice: the break plays it, the kit's trigger stays silent
+	std::atomic<uint32_t> brkBeat{0};        // the break's heartbeat (it stops: the kit plays again)
+	uint32_t brkBeatSeen = 0;
+	int brkStale = 0;
+	std::atomic<float> brkMixL{0.f}, brkMixR{0.f}; // the break's mix (for CHOP FX: "CHOP + BREAK")
 	float rootPhase = 0.f;
 	std::atomic<bool> rootHeld{false};
 	// CLEAR: pressed alone = the whole chop pattern, held + a pad = only that pad's hits
@@ -610,6 +617,8 @@ struct GenraChop : Module {
 	// pattern says whether it is on (pat.loop, so ABLAUF's pads keep it), the length is the module's (0: AUTO)
 	int loopBars = 0;                    // saved: 0 AUTO, else 1, 2, 4, 8, 16
 	std::atomic<int> reqLoop{0};         // from the panel: 1 on, 2 off
+	int loopWant = 0;                    // 2.7.0: LOOP switched while playing waits for the end of the pattern
+	std::atomic<int> loopPendPub{0};     // for the panel: 1 waits to go on, 2 waits to go off (blinks)
 	std::atomic<bool> loopPub{false};    // for the panel: LOOP is on
 	std::atomic<int> loopBarsPub{0};     // for the panel: the length playing (bars)
 	SVoice lv[2];
@@ -708,7 +717,7 @@ struct GenraChop : Module {
 		configParam(BPM_PARAM, 50.f, 200.f, 92.f, "Tempo", " BPM")->snapEnabled = true;
 		configParam(SWING_PARAM, 50.f, 75.f, 58.f, "Swing", "%");
 		configParam(VOL_PARAM, 0.f, 1.f, 0.8f, "Chop level", "%", 0.f, 100.f);
-		configParam(BRK_PARAM, 0.f, 1.f, 0.8f, "Break level", "%", 0.f, 100.f);
+		configParam(BRK_PARAM, 0.f, 1.f, 0.8f, "Break level (unused since 2.7.0: GENRA CHOP BREAK)", "%", 0.f, 100.f);
 		configParam(MUTATE_PARAM, 0.f, 1.f, 0.f, "Mutate (chops changed every 4 bars)", "%", 0.f, 100.f);
 		configParam(PITCH_PARAM, -12.f, 12.f, 0.f, "Pitch of all chops", " semitones")->snapEnabled = true;
 		configParam(CHOPS_PARAM, (float) MIN_CHOPS, (float) PADS, (float) DEFAULT_CHOPS, "Chops (how many the sample is cut into)")
@@ -740,8 +749,8 @@ struct GenraChop : Module {
 		configOutput(PAD_OUTPUT + 3, "Pads mod (swell)");
 		configOutput(CHOP_L_OUTPUT, "Chop left");
 		configOutput(CHOP_R_OUTPUT, "Chop right");
-		configOutput(BRK_L_OUTPUT, "Break left");
-		configOutput(BRK_R_OUTPUT, "Break right");
+		configOutput(BRK_L_OUTPUT, "GENRA CHOP BREAK left (no jack since 2.7.0)");
+		configOutput(BRK_R_OUTPUT, "GENRA CHOP BREAK right (no jack since 2.7.0)");
 		configOutput(CLK_OUTPUT, "Clock (16ths)");
 		configOutput(RST_OUTPUT, "Reset");
 		configOutput(BAR_OUTPUT, "Bar (trigger on every bar's one)");
@@ -752,6 +761,11 @@ struct GenraChop : Module {
 			q = -1;
 		for (auto& t : takenNotes)
 			t = 0;
+		for (int v = 0; v < DRUMS; v++) {
+			hitCount[v] = 0;
+			hitVel[v] = 0.f;
+			hitStep[v] = 0;
+		}
 		set.style = 5;
 		applyStyleDefaults();
 		generate(pat, -1, set, SampleInfo(), pads, random::u32(), false, 92.f);
@@ -769,11 +783,9 @@ struct GenraChop : Module {
 		genralink::hub().gone(this);
 		ChopRegistry::get().remove(this);
 		delete chops;
-		delete brk;
 		for (auto& t : trash)
 			delete t.exchange(nullptr);
 		delete incoming.exchange(nullptr);
-		delete incomingBrk.exchange(nullptr);
 	}
 
 	const Style& style() const { return STYLES[clamp(set.style, 0, NUM_STYLES - 1)]; }
@@ -960,15 +972,14 @@ struct GenraChop : Module {
 			case 0: {
 				const Hit& h = ren.drum[p.idx][s];
 				float vel = h.vel * (p.subs > 1 ? (0.6f + 0.4f * (p.sub == 0)) : 1.f);
-				if (set.drumMode != 1 || !brk) {
+				// GENRA CHOP BREAK set to play this voice instead of the kit: the trigger stays silent
+				if (!(brkReplace.load() & (1u << p.idx))) {
 					drumGate[p.idx].left = (int) (0.005f * sr);
 					drumGate[p.idx].v = 10.f * vel;
 				}
-				if (set.drumMode != 0 && brk && brk->voicePad[p.idx] >= 0) {
-					// the break: hats choke each other, the rest round robin
-					SVoice& v = bv[(p.idx == CH || p.idx == OH) ? 3 : (bvNext++ % 3)];
-					v.start(brk, brk->voicePad[p.idx], vel, 0, false, sr, -1);
-				}
+				hitVel[p.idx] = vel;
+				hitStep[p.idx] = s;
+				hitCount[p.idx]++;
 				break;
 			}
 			case 1:
@@ -1003,12 +1014,35 @@ struct GenraChop : Module {
 				break;
 			}
 			case 4: {
+				if (pat.loop)
+					break; // LOOP: the chop pattern rests (a chop queued before it came on stays silent too)
 				const ChopEv& e = ren.chop[s];
 				int len = (int) (e.len * stepPeriod / p.subs);
 				playChop(e.pad, e.vel, e.pitch, e.rev, std::max(1, len), sr);
 				break;
 			}
 		}
+	}
+
+	/** LOOP on or off now (on the first step of the pattern, or at once when stopped): the chops still ringing go. */
+	void setLoop(bool on, float sr) {
+		loopWant = 0;
+		loopPendPub = 0;
+		if (on == pat.loop)
+			return;
+		pat.loop = on;
+		shareDirty = true; // GRID and ABLAUF see it
+		if (on) {
+			for (SVoice& v : cv)
+				if (v.active)
+					v.release(sr);
+			for (int i = 0; i < nPend;)
+				if (pend[i].kind == 4)
+					pend[i] = pend[--nPend];
+				else
+					i++;
+		}
+		loopPub = on;
 	}
 
 	void doReset() {
@@ -1020,8 +1054,6 @@ struct GenraChop : Module {
 
 	void onSampleRateChange(const SampleRateChangeEvent& e) override {
 		for (SVoice& v : cv)
-			v.active = false;
-		for (SVoice& v : bv)
 			v.active = false;
 		for (SVoice& v : lv)
 			v.active = false;
@@ -1074,13 +1106,6 @@ struct GenraChop : Module {
 			dirty = true;
 			taken = true;
 		}
-		ChopSet* b = incomingBrk.exchange(nullptr);
-		if (b) {
-			for (SVoice& v : bv)
-				v.active = false;
-			toTrash(brk);
-			brk = b;
-		}
 		// ---- requests from the panel
 		if (reqStyle.exchange(false)) {
 			pushUndo();
@@ -1088,14 +1113,17 @@ struct GenraChop : Module {
 				set.key = chops->info.key;
 			generate(pat, -1, set, info(), pads, random::u32(), lockChords, bpmNow());
 			dirty = true;
+			newAllCount++;
 		}
 		int rq = reqNew.exchange(0);
 		if (newTrig.process(inputs[NEW_INPUT].getVoltage(), 0.1f, 1.f)) {
 			rq |= 1 << 5;
 			freshReq = true; // the panel cuts the sample fresh (as the NEW ALL button)
 		}
-		if (rq & (1 << 5))
+		if (rq & (1 << 5)) {
 			newTrack(-1);
+			newAllCount++;
+		}
 		else if (rq & (1 << 6))
 			newTrack(T_HARMONY);
 		else
@@ -1150,16 +1178,16 @@ struct GenraChop : Module {
 			}
 			dirty = true;
 		}
+		// LOOP (2.7.0): pressed while playing, it comes (or goes) with the end of the pattern; stopped, at once
 		int rl = reqLoop.exchange(0);
-		if (rl) {
-			bool on = rl == 1;
-			if (on != pat.loop) {
-				pat.loop = on;
-				shareDirty = true; // GRID and ABLAUF see it
-			}
+		if (rl)
+			loopWant = (rl == 1) != pat.loop ? rl : 0;
+		if (loopWant && !running.load() && !inputs[RUN_INPUT].isConnected())
+			setLoop(loopWant == 1, sr);
+		if ((tick & 255) == 0) {
+			loopPub = loopWant ? loopWant == 1 : pat.loop;
+			loopPendPub = loopWant;
 		}
-		if ((tick & 255) == 0)
-			loopPub = pat.loop;
 		int rs = reqSample.exchange(0);
 		if (rs == 1 && chops) {
 			sv.startRange(chops, 0.0, (double) chops->data.frames(), 1.f, (int) params[PITCH_PARAM].getValue(), false, sr, -1);
@@ -1283,11 +1311,16 @@ struct GenraChop : Module {
 					v.release(sr);
 		}
 		wasRunning = run;
-		if (reqKill.exchange(false)) {
+		if (reqKill.exchange(false))
 			for (SVoice& v : cv)
 				v.release(sr);
-			for (SVoice& v : bv)
-				v.release(sr);
+		// GENRA CHOP BREAK's heartbeat: when it stops (removed, bypassed), the kit plays all voices again
+		if ((tick & 255) == 0) {
+			uint32_t hb = brkBeat.load();
+			if (hb != brkBeatSeen)
+				brkBeatSeen = hb, brkStale = 0;
+			else if (++brkStale > (int) (0.5f * sr / 256.f))
+				brkReplace = 0;
 		}
 		if (!rec)
 			recUndone = false;
@@ -1302,6 +1335,8 @@ struct GenraChop : Module {
 			clkOutLeft = (int) (0.001f * sr);
 			if (s % STEPS == 0)
 				barOutLeft = (int) (0.001f * sr);
+			if (s == 0 && loopWant)
+				setLoop(loopWant == 1, sr);
 			if (s == 0) {
 				cycle++;
 				float mut = params[MUTATE_PARAM].getValue();
@@ -1397,12 +1432,9 @@ struct GenraChop : Module {
 		float vol = 5.f * params[VOL_PARAM].getValue();
 		outputs[CHOP_L_OUTPUT].setVoltage(clamp(L * vol, -12.f, 12.f));
 		outputs[CHOP_R_OUTPUT].setVoltage(clamp(R * vol, -12.f, 12.f));
-		float bl = 0.f, br = 0.f;
-		for (SVoice& v : bv)
-			v.next(sr, bl, br);
-		float bvol = 5.f * params[BRK_PARAM].getValue();
-		outputs[BRK_L_OUTPUT].setVoltage(clamp(bl * bvol, -12.f, 12.f));
-		outputs[BRK_R_OUTPUT].setVoltage(clamp(br * bvol, -12.f, 12.f));
+		// the break's mix from GENRA CHOP BREAK (no jacks: CHOP FX takes it as "CHOP + BREAK")
+		outputs[BRK_L_OUTPUT].setVoltage(brkStale ? 0.f : brkMixL.load());
+		outputs[BRK_R_OUTPUT].setVoltage(brkStale ? 0.f : brkMixR.load());
 		outputs[CLK_OUTPUT].setVoltage(clkOutLeft > 0 ? 10.f : 0.f);
 		outputs[RST_OUTPUT].setVoltage(rstOutLeft > 0 ? 10.f : 0.f);
 		outputs[BAR_OUTPUT].setVoltage(barOutLeft > 0 ? 10.f : 0.f);
@@ -1561,9 +1593,6 @@ struct GenraChop : Module {
 				incoming = c;
 				loader->say("handed over", false);
 			}
-		if (!incomingBrk.load())
-			if (ChopSet* c = brkLoader->done.exchange(nullptr))
-				incomingBrk = c;
 		if (taken.exchange(false))
 			loader->say("in use", false);
 		const ChopSet* ui = uiChops.load();
@@ -1585,7 +1614,8 @@ struct GenraChop : Module {
 		json_object_set_new(r, "bassMode", json_integer(set.bassMode));
 		json_object_set_new(r, "melMode", json_integer(set.melMode));
 		json_object_set_new(r, "padMode", json_integer(set.padMode));
-		json_object_set_new(r, "drumMode", json_integer(set.drumMode));
+		json_object_set_new(r, "groove", json_integer(set.drumMode));
+		json_object_set_new(r, "chopPat", json_integer(set.chopPat));
 		json_object_set_new(r, "chopMode", json_integer(chopMode));
 		json_object_set_new(r, "bank", json_integer(bank.load()));
 		json_object_set_new(r, "warpOn", json_boolean(warpOn));
@@ -1598,7 +1628,6 @@ struct GenraChop : Module {
 		json_object_set_new(r, "bakeChops", json_boolean(bakeChops));
 		json_object_set_new(r, "running", json_boolean(running));
 		json_object_set_new(r, "sample", json_string(samplePath.c_str()));
-		json_object_set_new(r, "break", json_string(breakPath.c_str()));
 		json_object_set_new(r, "midiIn", midiIn.toJson());
 		json_t* jp = json_array();
 		for (const PadSet& ps : pads) {
@@ -1632,7 +1661,9 @@ struct GenraChop : Module {
 		set.bassMode = clamp(geti(r, "bassMode", 0), 0, 3);
 		set.melMode = clamp(geti(r, "melMode", 0), 0, 3);
 		set.padMode = clamp(geti(r, "padMode", 0), 0, 2);
-		set.drumMode = clamp(geti(r, "drumMode", 0), 0, 2);
+		// 2.7.0: the drums' field is the GROOVE (KIT / BREAK / BOTH went with the break: STYLE)
+		set.drumMode = clamp(geti(r, "groove", G_STYLE), 0, NUM_GROOVES - 1);
+		set.chopPat = clamp(geti(r, "chopPat", CP_AUTO), 0, NUM_CHOP_PATS - 1);
 		chopMode = clamp(geti(r, "chopMode", 0), 0, NUM_CHOP_MODES - 1);
 		bank = clamp(geti(r, "bank", 0), 0, PADS / 16 - 1);
 		warpOn = getb(r, "warpOn", false);
@@ -1677,10 +1708,6 @@ struct GenraChop : Module {
 			cutCount = chopsWanted();
 			startLoad(loader, samplePath, chopMode, true, cutCount, warpCfg());
 		}
-		json_t* jb = json_object_get(r, "break");
-		breakPath = jb ? json_string_value(jb) : "";
-		if (!breakPath.empty() && system::isFile(breakPath))
-			startLoad(brkLoader, breakPath, CM_TRANSIENT, true);
 	}
 
 	void onReset(const ResetEvent& e) override {
@@ -1688,7 +1715,8 @@ struct GenraChop : Module {
 		for (PadSet& ps : pads)
 			ps = PadSet();
 		lockChords = false;
-		set.drumMode = 0;
+		set.drumMode = G_STYLE;
+		set.chopPat = CP_AUTO;
 		applyStyleDefaults();
 		reqStyle = true;
 	}
@@ -1708,20 +1736,6 @@ struct GenraChop : Module {
 		std::free(p);
 		cutCount = chopsWanted();
 		startLoad(loader, samplePath, chopMode, false, cutCount, warpCfg());
-	}
-	void loadBreak() {
-		std::string dir = breakPath.empty() ? (samplePath.empty() ? hhx::sampleFolder() : system::getDirectory(samplePath))
-		                                    : system::getDirectory(breakPath);
-		osdialog_filters* f = osdialog_filters_parse("WAV:wav,WAV");
-		char* p = osdialog_file(OSDIALOG_OPEN, dir.empty() ? nullptr : dir.c_str(), nullptr, f);
-		osdialog_filters_free(f);
-		if (!p)
-			return;
-		breakPath = p;
-		std::free(p);
-		startLoad(brkLoader, breakPath, CM_TRANSIENT, true);
-		if (set.drumMode == 0)
-			set.drumMode = 2;
 	}
 	void loadPath(const std::string& p) {
 		std::string ext = string::lowercase(system::getExtension(p));

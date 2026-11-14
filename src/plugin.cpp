@@ -9,4 +9,5 @@ void init(Plugin* p) {
 	p->addModel(modelChopGrid);
 	p->addModel(modelChopAblauf);
 	p->addModel(modelChopFx);
+	p->addModel(modelChopBreak);
 }

@@ -127,6 +127,10 @@ std::vector<uint8_t> writeWav(const SampleData& s, size_t a, size_t b, bool reve
 		for (int c = 0; c < 2; c++) {
 			const std::vector<float>& ch = c ? R : s.L;
 			float y = ch[std::min(i0, b - 1)] * (1.f - fr) + ch[i1] * fr;
+			// 2.7.0: 1 ms in, 5 ms out, so a saved chop never clicks either
+			float fin = std::min(1.f, (float) i / std::max(1.f, 0.001f * s.sampleRate));
+			float fout = std::min(1.f, (float) (n - 1 - i) / std::max(1.f, std::min(0.005f * s.sampleRate, n * 0.25f)));
+			y *= fin * fout;
 			int32_t q = (int32_t) std::lround(std::max(-1.f, std::min(1.f, y)) * 8388607.f);
 			v.push_back((uint8_t) q);
 			v.push_back((uint8_t) (q >> 8));
@@ -238,6 +242,48 @@ static std::vector<std::pair<size_t, float>> onsets(const std::vector<float>& m,
 	return out;
 }
 
+/** The attack near an onset found by the flux (`at`, a frame of 256): the first moment the level jumps, then back to the
+ *  quietest point within 4 ms before it. */
+static size_t onAttack(const std::vector<float>& m, size_t at, float sr) {
+	const size_t B = 32;
+	size_t n = m.size();
+	size_t a = at > 512 ? at - 512 : 0, b = std::min(n, at + 1536);
+	if (b <= a + 4 * B)
+		return at;
+	std::vector<float> e;
+	for (size_t i = a; i + B <= b; i += B) {
+		float mx = 0.f;
+		for (size_t j = i; j < i + B; j++)
+			mx = std::max(mx, std::fabs(m[j]));
+		e.push_back(mx);
+	}
+	float lo = 1e9f, hi = 0.f;
+	size_t kHi = 0;
+	for (size_t k = 0; k < e.size(); k++)
+		if (e[k] > hi)
+			hi = e[k], kHi = k;
+	for (size_t k = 0; k <= kHi; k++)
+		lo = std::min(lo, e[k]);
+	if (hi <= 1e-6f || hi < lo * 1.5f)
+		return at;
+	float thr = lo + 0.3f * (hi - lo);
+	size_t k = 0;
+	while (k < kHi && e[k] < thr)
+		k++;
+	size_t att = a + k * B;
+	// the quietest sample in the 4 ms before the attack
+	size_t back = (size_t) (0.004f * sr);
+	size_t from = att > back ? att - back : 0;
+	size_t best = att;
+	float bv = 1e9f;
+	for (size_t i = from; i <= att && i < n; i++) {
+		float v = std::fabs(m[i]) + 1e-7f * (float) (att - i);
+		if (v < bv)
+			bv = v, best = i;
+	}
+	return best;
+}
+
 static void cut(ChopSet& cs, const std::vector<float>& m) {
 	size_t total = cs.data.frames();
 	std::vector<size_t> st;
@@ -264,7 +310,19 @@ static void cut(ChopSet& cs, const std::vector<float>& m) {
 			if (!close)
 				st.push_back(o.first);
 		}
+		// 2.7.0: every cut on the attack itself, a hair before it (the quietest point just ahead): never in the middle of
+		// it (the flux frame can be a little late or early), so no chop starts with its hit bitten off
+		for (size_t k = 1; k < st.size(); k++)
+			st[k] = onAttack(m, st[k], cs.data.sampleRate);
 		std::sort(st.begin(), st.end());
+		{
+			std::vector<size_t> keep;
+			size_t gap = (size_t) (0.03f * cs.data.sampleRate);
+			for (size_t x : st)
+				if (keep.empty() || x >= keep.back() + gap)
+					keep.push_back(x);
+			st = keep;
+		}
 		// fewer than asked: split the longest in half (while they are long enough)
 		while ((int) st.size() < want) {
 			size_t best = 0, bestLen = 0;

@@ -1123,7 +1123,7 @@ struct ChopFxWidget : ModuleWidget, ml::LearnHost {
 		                                          : std::string("No clock at CLK (16ths)")));
 		menu->addChild(new MenuSeparator);
 		menu->addChild(createMenuLabel("Without cables (a cable always wins)"));
-		static const char* const AS[ChopFx::NUM_SOURCE_KINDS] = {"Off (cables only)", "CHOP L/R", "CHOP + BREAK"};
+		static const char* const AS[ChopFx::NUM_SOURCE_KINDS] = {"Off (cables only)", "CHOP L/R", "CHOP + BREAK (GENRA CHOP BREAK)"};
 		menu->addChild(createSubmenuItem("Sound at IN from GENRA CHOP", AS[m->audioSource.load()], [=](Menu* sub) {
 			for (int i = 0; i < ChopFx::NUM_SOURCE_KINDS; i++)
 				sub->addChild(createCheckMenuItem(AS[i], "", [=]() { return m->audioSource.load() == i; }, [=]() { m->audioSource = i; }));
