@@ -300,39 +300,17 @@ int main() {
 			mx = std::max(mx, std::fabs(b.data.L[i]));
 		CHECK(mx > 0.5f && mx <= 0.9f, "own break: peak %.2f", mx);
 		{
-			// its level over time (every 0.25 s), shown
-			printf("  own break level:");
+			// it sounds all the way through (every quarter second has something)
 			size_t q = 11025;
 			for (size_t k = 0; k + q <= b.data.frames(); k += q) {
 				float e = 0.f;
 				for (size_t j = k; j < k + q; j++)
 					e += b.data.L[j] * b.data.L[j];
-				printf(" %.3f", std::sqrt(e / q));
+				CHECK(std::sqrt(e / q) > 0.01f, "own break: silent at %.2f s", k / 44100.f);
 			}
-			printf("\n  samples at 100, 1000, 30000: %f %f %f\n", b.data.L[100], b.data.L[1000], b.data.L[30000]);
 		}
 		analyse(b, CM_TRANSIENT, BRK_PADS);
 		brkAssign(b, b.voicePad); // by the sound of each hit (the module does so)
-		{
-			// what the chops sound like (shown, to see why a voice lands where it does)
-			float a = 1.f - std::exp(-2.f * (float) M_PI * 150.f / 44100.f);
-			for (int i = 0; i < b.info.count; i++) {
-				size_t s0 = b.cutStart[i], s1 = std::min(b.cutEnd[i], s0 + (size_t) (0.12f * 44100.f));
-				float lp = 0.f, prev = 0.f, eA = 1e-9f, eL = 0.f, eH = 0.f, pk = 0.f;
-				for (size_t k = s0; k < s1; k++) {
-					float x = 0.5f * (b.data.L[k] + b.data.R[k]);
-					lp += a * (x - lp);
-					float hp = x - prev;
-					prev = x;
-					eA += x * x;
-					eL += lp * lp;
-					eH += hp * hp;
-					pk = std::max(pk, std::fabs(x));
-				}
-				printf("  break chop %2d at %6d..%6d  low %.3f high %.3f peak %.2f  voice %d\n", i + 1, (int) s0, (int) s1, eL / eA,
-				       eH / eA, pk, brkVoiceOf(b.voicePad, i));
-			}
-		}
 		printf("own break: %d chops, %.1f BPM, %d bars, kick on chop %d, snare on chop %d\n", b.info.count, b.bpm, brkBars(b),
 		       b.voicePad[KICK] + 1, b.voicePad[SNARE] + 1);
 		CHECK(b.info.count >= 10 && b.info.count <= BRK_PADS, "own break: %d chops", b.info.count);

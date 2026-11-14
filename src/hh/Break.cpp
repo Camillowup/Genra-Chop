@@ -303,11 +303,14 @@ void synthBreak(SampleData& out, float sr) {
 		const int D[3] = {(int) (0.011f * sr), (int) (0.017f * sr), (int) (0.023f * sr)};
 		std::vector<float> l = out.L, r = out.R;
 		for (size_t i = 0; i < n; i++)
-			for (int k = 0; k < 3; k++)
-				if (i >= (size_t) D[k]) {
-					out.L[i] += 0.12f * l[i - D[(k + 1) % 3]];
-					out.R[i] += 0.12f * r[i - D[k]];
-				}
+			for (int k = 0; k < 3; k++) {
+				// the left and the right side get other delays (a little width)
+				size_t dl = (size_t) D[(k + 1) % 3], dr = (size_t) D[k];
+				if (i >= dl)
+					out.L[i] += 0.12f * l[i - dl];
+				if (i >= dr)
+					out.R[i] += 0.12f * r[i - dr];
+			}
 	}
 	float mx = 0.f;
 	for (size_t i = 0; i < n; i++)
