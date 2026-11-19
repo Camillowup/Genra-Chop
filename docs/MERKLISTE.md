@@ -3,6 +3,12 @@
 Nur Offenes. Gebaut wird erst, wenn ausdrücklich „bauen“ kommt; vorher wird jedes Panel als Entwurf gezeigt.
 Kein Release ohne ausdrückliches Okay.
 
+**Offen: MIDI-MAP (Prüfung 19. Nov. 2026).** Alle Tasten und Felder zusätzlich über Rack-MIDI-MAP mappbar machen (wie
+GENRA TECHNO 2.0.7: die Taste/das Feld ist ein ParamWidget, Parameter hinten anhängen), das eigene MIDI-Learn bleibt.
+Das eigene MIDI-Learn auch auf BREAK (14 Tasten: LOAD, WARP, x2, /2, LOCK, UNDO, CLEAR, COPY, PASTE, SAVE, ROLL, NEW,
+REVERSE, Voice-Wahl; Felder MODE, MIX, CMODE) und GRID (12 Tasten: Spuren, AUTO, SNAP, FOLLOW, UNDO, REDO, COPY, PASTE,
+CLEAR, GEN, REC) ausweiten. Bewusst nicht: Pads, Listen, Wellenform, GRID-Editor.
+
 2.2.0 (12.11.2026): Umbenennung, MOVE, CLEAR, LOAD SAMPLE, MIDI learn, GENRA CHOP ABLAUF – in Rack testen.
 2.3.0 (12.11.2026): GENRA CHOP FX (neu), CHOPS statt DUST, Pad-Banks A–D, STOP/PLAY grösser, Taster-Schrift passt
 sich an, ABLAUF ohne RENEWS mit CLEAR / CLEAR ALL, GRID schwarze Tasten – in Rack testen.
