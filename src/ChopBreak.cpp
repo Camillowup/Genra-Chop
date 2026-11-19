@@ -16,8 +16,8 @@
 static const MapCtl MAP_BTNS[] = {
     {cbl::LOAD, "LOAD BREAK"},
     {cbl::WARP, "WARP"},
-    {cbl::WX, "WARP x2"},
-    {cbl::WD, "WARP /2"},
+    {cbl::WX2, "WARP x2"},
+    {cbl::WD2, "WARP /2"},
     {cbl::VSEL0, "VOICE 1"},
     {cbl::VSEL1, "VOICE 2"},
     {cbl::VSEL2, "VOICE 3"},
