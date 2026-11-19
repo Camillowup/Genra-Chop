@@ -20,6 +20,32 @@
 #include "MidiLearn.hpp"
 #include "hh/Song.hpp"
 
+// MIDI-MAP (2.8): the buttons and fields by their place on the panel (BTN_PARAM + i, FLD_PARAM + i; only ever append)
+static const MapCtl MAP_BTNS[] = {
+    {cal::STOP, "STOP"},
+    {cal::PLAY, "PLAY"},
+    {cal::BANK0, "BANK A"},
+    {cal::BANK1, "BANK B"},
+    {cal::BANK2, "BANK C"},
+    {cal::BANK3, "BANK D"},
+    {cal::CLEAR, "CLEAR"},
+    {cal::CLEARALL, "CLEAR ALL"},
+    {cal::INS, "INSERT"},
+    {cal::DEL, "DELETE"},
+    {cal::UNDO, "UNDO"},
+    {cal::MIDI, "MIDI"},
+    {cal::MAKE, "MAKE SONG"},
+    {cal::PART0, "PART 1"},
+    {cal::PART1, "PART 2"},
+    {cal::PART2, "PART 3"},
+    {cal::PART3, "PART 4"},
+    {cal::PART4, "PART 5"},
+    {cal::PART5, "PART 6"},
+};
+static const MapCtl MAP_FLDS[] = {
+    {cal::FORM, "SONG FORM"},
+};
+
 static const int SLOTS = 64, ROWS_MAX = 256, UNDO_MAX = 12;
 static const NVGcolor FAMILY_COL[8] = {nvgRGB(0xc8, 0x31, 0x2b), nvgRGB(0x6f, 0x8f, 0xa8), nvgRGB(0xd6, 0xa6, 0x40),
                                        nvgRGB(0x7f, 0xa8, 0x5a), nvgRGB(0x9a, 0x6f, 0xa8), nvgRGB(0x5f, 0xa8, 0xa0),
@@ -44,7 +70,7 @@ struct Row {
 };
 
 struct ChopAblauf : Module {
-	enum ParamId { NUM_PARAMS };
+	enum ParamId { NUM_PARAMS, BTN_PARAM = NUM_PARAMS, FLD_PARAM = BTN_PARAM + 19, MODESEL_PARAM = FLD_PARAM + 1, MAP_END }; // 2.8: MIDI-MAP
 	enum InputId { ROWCV_INPUT, RST_INPUT, RUN_INPUT, NEXT_INPUT, PREV_INPUT, PADCV_INPUT, NUM_INPUTS };
 	enum OutputId { END_OUTPUT, BAR_OUTPUT, ROW_OUTPUT, NUM_OUTPUTS };
 
@@ -98,7 +124,10 @@ struct ChopAblauf : Module {
 	ml::CtrlIn ctrl[ml::CTRLS];
 
 	ChopAblauf() {
-		config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, 0);
+		config(MAP_END, NUM_INPUTS, NUM_OUTPUTS, 0);
+		configMapCtls(this, BTN_PARAM, 19, FLD_PARAM, 1);
+		configSwitch(MODESEL_PARAM, 0.f, 1.f, 0.f, "PATT / SONG (for MIDI-MAP)", {"PATT", "SONG"});
+		paramQuantities[MODESEL_PARAM]->randomizeEnabled = false;
 		configInput(ROWCV_INPUT, "Row CV (0-10 V over the song list, from the next bar)");
 		configInput(RST_INPUT, "Reset (song to the first row)");
 		configInput(RUN_INPUT, "Run (trigger: play / stop)");
@@ -821,7 +850,9 @@ struct ChopAblauf : Module {
 		json_object_set_new(r, "rows", jr);
 		return r;
 	}
+	uint32_t mapCode = 0; // bumped by dataFromJson (MIDI-MAP of the buttons and fields)
 	void dataFromJson(json_t* r) override {
+		mapCode++;
 		auto gi = [&](const char* k, int d) {
 			json_t* j = json_object_get(r, k);
 			return j ? (int) json_integer_value(j) : d;
@@ -917,8 +948,13 @@ struct AList : widget::OpaqueWidget {
 	}
 };
 
-struct AMode : widget::OpaqueWidget {
+struct AMode : app::ParamWidget { // the param: PATT / SONG for MIDI-MAP (2.8)
 	ChopAblauf* m = nullptr;
+	float seen = -1.f;
+	uint32_t seenCode = 0;
+	void step() override;
+	void onEnter(const EnterEvent& e) override {}
+	void onLeave(const LeaveEvent& e) override {}
 	void draw(const DrawArgs& args) override {
 		bool song = m && m->songMode;
 		float hw = box.size.x / 2;
@@ -933,11 +969,29 @@ struct AMode : widget::OpaqueWidget {
 	}
 	void onButton(const ButtonEvent& e) override {
 		if (m && e.button == GLFW_MOUSE_BUTTON_LEFT && e.action == GLFW_PRESS) {
+			if (module && paramId >= 0 && (e.mods & RACK_MOD_MASK) == 0)
+				ParamWidget::onButton(e); // touch the param (MIDI-MAP learns it)
 			m->songMode = e.pos.x > box.size.x / 2;
 			e.consume(this);
 		}
 	}
 };
+
+void AMode::step() {
+	ParamWidget::step();
+	if (!m || paramId < 0)
+		return;
+	float v = m->params[paramId].getValue();
+	if (m->mapCode != seenCode || seen < 0.f) { // a patch or undo: as it is
+		seenCode = m->mapCode;
+		seen = v;
+		return;
+	}
+	if (std::fabs(v - seen) > 1e-4f) { // MIDI-MAP: under half PATT, over half SONG
+		seen = v;
+		m->songMode = v >= 0.5f;
+	}
+}
 
 struct ALed : widget::Widget {
 	ChopAblauf* m = nullptr;
@@ -977,6 +1031,7 @@ struct AInfo : widget::Widget {
 };
 
 struct AblaufWidgetBase : ModuleWidget, ml::LearnHost {
+	bool mapDone = false;
 	ml::Learner learn;
 	std::string msg;
 	float msgTime = 0.f;
@@ -1456,6 +1511,10 @@ struct ChopAblaufWidget : AblaufWidgetBase {
 		// song
 		AMode* mode = at<AMode>(cal::MODE);
 		mode->m = m;
+		if (m) { // MIDI-MAP: PATT / SONG
+			mode->module = m;
+			mode->paramId = ChopAblauf::MODESEL_PARAM;
+		}
 		AList* list = at<AList>(cal::LIST);
 		list->m = m;
 		list->w = this;
@@ -1572,6 +1631,11 @@ struct ChopAblaufWidget : AblaufWidgetBase {
 	}
 
 	void step() override {
+		if (!mapDone && module) { // MIDI-MAP: the buttons and fields get their params (the panel is built by now)
+			if (ChopAblauf* mm = dynamic_cast<ChopAblauf*>(module))
+				mapCtls(this, mm, ChopAblauf::BTN_PARAM, MAP_BTNS, 19, ChopAblauf::FLD_PARAM, MAP_FLDS, 1, &mm->mapCode);
+			mapDone = true;
+		}
 		ChopAblauf* m = dynamic_cast<ChopAblauf*>(module);
 		if (m) {
 			findHost(m);

@@ -517,7 +517,11 @@ struct GenraChop : Module {
 		ENUMS(DENS_PARAM, 4),
 		ENUMS(TK2_PARAM, 4), // CHOP (drums, melody, pads), OCT (bass)
 		MOVE_PARAM,          // the start of the chop last played by hand (ms)
-		NUM_PARAMS
+		NUM_PARAMS,
+		// 2.8: MIDI-MAP of the buttons and fields (GenraChop.cpp: MAP_BTNS, MAP_FLDS), after the knobs
+		BTN_PARAM = NUM_PARAMS,
+		FLD_PARAM = BTN_PARAM + 27,
+		MAP_END = FLD_PARAM + 11
 	};
 	enum InputId { CLK_INPUT, RST_INPUT, RUN_INPUT, NEW_INPUT, NUM_INPUTS };
 	enum OutputId {
@@ -713,7 +717,8 @@ struct GenraChop : Module {
 	std::atomic<int> undoCount{0};
 
 	GenraChop() {
-		config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, 0);
+		config(MAP_END, NUM_INPUTS, NUM_OUTPUTS, 0);
+		configMapCtls(this, BTN_PARAM, 27, FLD_PARAM, 11);
 		configParam(BPM_PARAM, 50.f, 200.f, 92.f, "Tempo", " BPM")->snapEnabled = true;
 		configParam(SWING_PARAM, 50.f, 75.f, 58.f, "Swing", "%");
 		configParam(VOL_PARAM, 0.f, 1.f, 0.8f, "Chop level", "%", 0.f, 100.f);
@@ -1653,7 +1658,9 @@ struct GenraChop : Module {
 	}
 	static float num(json_t* a, size_t i) { return (float) json_number_value(json_array_get(a, i)); }
 
+	uint32_t mapCode = 0; // bumped by dataFromJson (MIDI-MAP of the buttons and fields)
 	void dataFromJson(json_t* r) override {
+		mapCode++;
 		set.style = clamp(geti(r, "style", set.style), 0, NUM_STYLES - 1);
 		set.keyAuto = getb(r, "keyAuto", true);
 		set.key.root = clamp(geti(r, "keyRoot", 5), 0, 11);

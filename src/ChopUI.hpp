@@ -49,8 +49,17 @@ inline void labelFit(NVGcontext* vg, std::shared_ptr<window::Font> f, float x, f
 }
 inline Rect rectOf(const float* v) { return Rect(Vec(v[0], v[1]), Vec(v[2], v[3])); }
 
+/** Rack MIDI-MAP for our buttons and fields (2.8): the button / field is a ParamWidget with a param of its own
+ * (map(): appended after the module's knobs). A value over half presses the button; a field goes through its list
+ * (0..1) and takes the entry when the knob rests for 0.3 s. A click touches the param (MIDI-MAP learns it). Values
+ * set by the code (a patch, undo) do nothing: the module bumps a counter in dataFromJson. */
+struct MapCtl {
+	const float* rect;
+	const char* name;
+};
+
 /** A button in the look (label in the button): press calls `act`; `lit` shows a toggle's state. */
-struct HHButton : widget::OpaqueWidget {
+struct HHButton : app::ParamWidget {
 	std::string text;
 	NVGcolor col = C_GRAPH, textCol = C_CREAM;
 	std::function<void()> act, release;
@@ -60,6 +69,34 @@ struct HHButton : widget::OpaqueWidget {
 	float fontSize = 9.5f;
 	int symbol = 0; // 1 play triangle, 2 stop square (before the text)
 	bool down = false;
+	float lastV = 0.f;
+	bool primed = false;
+	const uint32_t* code = nullptr;
+	uint32_t seenCode = 0;
+	void map(engine::Module* m, int id, const uint32_t* jsonCode) {
+		module = m;
+		paramId = id;
+		code = jsonCode;
+	}
+	void step() override {
+		ParamWidget::step();
+		if (!module || paramId < 0 || paramId >= (int) module->params.size())
+			return;
+		float v = module->params[paramId].getValue();
+		uint32_t c = code ? *code : 0;
+		if (primed && c == seenCode) {
+			if (v >= 0.5f && lastV < 0.5f && act)
+				act();
+			if (v < 0.5f && lastV >= 0.5f && release)
+				release();
+		}
+		primed = true;
+		seenCode = c;
+		lastV = v;
+	}
+	void onEnter(const EnterEvent& e) override {}
+	void onLeave(const LeaveEvent& e) override {}
+	void onDoubleClick(const DoubleClickEvent& e) override { e.consume(this); }
 	void draw(const DrawArgs& args) override {
 		bool on = lit && lit();
 		NVGcolor c = colOf ? colOf() : col;
@@ -111,9 +148,12 @@ struct HHButton : widget::OpaqueWidget {
 		label(args.vg, uiBold(), tx, box.size.y / 2 + 0.5f, text, fs, textColOf ? textColOf() : textCol);
 		if (learning && learning())
 			learnRing(args.vg, box.size.x, box.size.y);
+		ParamWidget::draw(args);
 	}
 	void onButton(const ButtonEvent& e) override {
 		if (e.button == GLFW_MOUSE_BUTTON_LEFT && e.action == GLFW_PRESS) {
+			if (module && paramId >= 0 && (e.mods & RACK_MOD_MASK) == 0)
+				ParamWidget::onButton(e); // touch the param (MIDI-MAP learns it)
 			down = true;
 			if (act)
 				act();
@@ -132,13 +172,53 @@ struct HHButton : widget::OpaqueWidget {
 };
 
 /** A field with a value: click opens the list, the mouse wheel steps through it. */
-struct HHField : widget::OpaqueWidget {
+struct HHField : app::ParamWidget {
 	std::function<std::string()> value;
 	std::function<int()> count, current;
 	std::function<std::string(int)> item;
 	std::function<void(int)> choose;
 	std::function<bool()> learning;
 	std::function<void(ui::Menu*)> rightMenu;
+	const uint32_t* code = nullptr;
+	float seen = -1.f;
+	uint32_t seenCode = 0;
+	double movedAt = 0.0;
+	int want = -1;
+	void map(engine::Module* m, int id, const uint32_t* jsonCode) {
+		module = m;
+		paramId = id;
+		code = jsonCode;
+	}
+	void step() override {
+		ParamWidget::step();
+		if (!module || paramId < 0 || paramId >= (int) module->params.size() || !count || !choose)
+			return;
+		float v = module->params[paramId].getValue();
+		uint32_t c = code ? *code : 0;
+		if (c != seenCode || seen < 0.f) {
+			seenCode = c;
+			seen = v;
+			want = -1;
+			return;
+		}
+		double now = system::getTime();
+		if (std::fabs(v - seen) > 1e-5f) {
+			seen = v;
+			int n = count();
+			if (n > 0) {
+				want = clamp((int) std::round(v * (n - 1)), 0, n - 1);
+				movedAt = now;
+			}
+		}
+		if (want >= 0 && now - movedAt >= 0.3) {
+			if (!current || current() != want)
+				choose(want);
+			want = -1;
+		}
+	}
+	void onEnter(const EnterEvent& e) override {}
+	void onLeave(const LeaveEvent& e) override {}
+	void onDoubleClick(const DoubleClickEvent& e) override { e.consume(this); }
 	void draw(const DrawArgs& args) override {
 		if (learning && learning())
 			learnRing(args.vg, box.size.x, box.size.y);
@@ -156,9 +236,12 @@ struct HHField : widget::OpaqueWidget {
 		nvgClosePath(args.vg);
 		nvgFillColor(args.vg, C_RED);
 		nvgFill(args.vg);
+		ParamWidget::draw(args);
 	}
 	void onButton(const ButtonEvent& e) override {
 		if (e.button == GLFW_MOUSE_BUTTON_LEFT && e.action == GLFW_PRESS && count) {
+			if (module && paramId >= 0 && (e.mods & RACK_MOD_MASK) == 0)
+				ParamWidget::onButton(e); // touch the param (MIDI-MAP learns it)
 			ui::Menu* menu = createMenu();
 			int n = count(), cur = current ? current() : -1;
 			for (int i = 0; i < n; i++)
@@ -181,3 +264,39 @@ struct HHField : widget::OpaqueWidget {
 	}
 };
 
+/** The module: nb buttons and nf fields for MIDI-MAP (the widget names them from its tables; only ever append). */
+inline void configMapCtls(engine::Module* m, int firstBtn, int nb, int firstFld, int nf) {
+	for (int i = 0; i < nb; i++) {
+		m->configButton(firstBtn + i, string::f("Button %d (for MIDI-MAP)", i + 1));
+		m->paramQuantities[firstBtn + i]->randomizeEnabled = false;
+	}
+	for (int i = 0; i < nf; i++) {
+		m->configParam(firstFld + i, 0.f, 1.f, 0.f, string::f("Field %d (for MIDI-MAP)", i + 1), " %", 0.f, 100.f);
+		m->paramQuantities[firstFld + i]->randomizeEnabled = false;
+		m->paramQuantities[firstFld + i]->resetEnabled = false;
+	}
+}
+/** The widget, once the panel is built: every button and field at a rect of the tables gets its param. */
+inline void mapCtls(widget::Widget* mw, engine::Module* m, int firstBtn, const MapCtl* b, int nb, int firstFld, const MapCtl* f,
+                    int nf, const uint32_t* code) {
+	if (!m)
+		return;
+	for (int i = 0; i < nb; i++)
+		if (engine::ParamQuantity* q = m->paramQuantities[firstBtn + i])
+			q->name = std::string(b[i].name) + " (a button: MIDI-MAP can press it)";
+	for (int i = 0; i < nf; i++)
+		if (engine::ParamQuantity* q = m->paramQuantities[firstFld + i])
+			q->name = std::string(f[i].name) + " select (for MIDI-MAP: a knob goes through the list)";
+	for (widget::Widget* w : mw->children) {
+		if (HHButton* x = dynamic_cast<HHButton*>(w)) {
+			for (int i = 0; i < nb; i++)
+				if (x->box.pos.equals(rectOf(b[i].rect).pos) && x->box.size.equals(rectOf(b[i].rect).size))
+					x->map(m, firstBtn + i, code);
+		}
+		else if (HHField* y = dynamic_cast<HHField*>(w)) {
+			for (int i = 0; i < nf; i++)
+				if (y->box.pos.equals(rectOf(f[i].rect).pos) && y->box.size.equals(rectOf(f[i].rect).size))
+					y->map(m, firstFld + i, code);
+		}
+	}
+}

@@ -22,6 +22,42 @@
 #include "fx/FxEngine.hpp"
 #include <atomic>
 
+// MIDI-MAP (2.8): the buttons and fields by their place on the panel (BTN_PARAM + i, FLD_PARAM + i; only ever append)
+static const MapCtl MAP_BTNS[] = {
+    {cfx::ON0, "FX ON 1"},
+    {cfx::ON1, "FX ON 2"},
+    {cfx::DJ0, "DJ 1"},
+    {cfx::DJ1, "DJ 2"},
+    {cfx::DJ2, "DJ 3"},
+    {cfx::DJ3, "DJ 4"},
+    {cfx::DJ4, "DJ 5"},
+    {cfx::DJ5, "DJ 6"},
+    {cfx::DJ6, "DJ 7"},
+    {cfx::DJ7, "DJ 8"},
+    {cfx::Q0, "QUICK 1"},
+    {cfx::Q1, "QUICK 2"},
+    {cfx::Q2, "QUICK 3"},
+    {cfx::Q3, "QUICK 4"},
+    {cfx::Q4, "QUICK 5"},
+    {cfx::Q5, "QUICK 6"},
+    {cfx::Q6, "QUICK 7"},
+    {cfx::Q7, "QUICK 8"},
+    {cfx::SEL_IN, "SOURCE IN"},
+    {cfx::SEL_KICK, "SOURCE KICK"},
+    {cfx::SEL_SNR, "SOURCE SNARE"},
+    {cfx::SEL_CH, "SOURCE CH"},
+    {cfx::SEL_OH, "SOURCE OH"},
+    {cfx::SEL_BASS, "SOURCE BASS"},
+    {cfx::SEL_MEL, "SOURCE MELODY"},
+    {cfx::SEL_PADS, "SOURCE PADS"},
+};
+static const MapCtl MAP_FLDS[] = {
+    {cfx::PRESET, "PRESET"},
+    {cfx::ROUTE, "ROUTE"},
+    {cfx::FX0, "FX 1"},
+    {cfx::FX1, "FX 2"},
+};
+
 using namespace fx;
 
 static const int QUICKS = 8, DJS = 8, SOURCES = 8, GROUPS = 10;
@@ -79,7 +115,8 @@ static std::string shortName(int f) {
 }
 
 struct ChopFx : Module {
-	enum ParamId { IN_PARAM, OUT_PARAM, ENUMS(FX_PARAM, 2), ENUMS(C_PARAM, 6), FILT_PARAM, NUM_PARAMS };
+	enum ParamId { IN_PARAM, OUT_PARAM, ENUMS(FX_PARAM, 2), ENUMS(C_PARAM, 6), FILT_PARAM, NUM_PARAMS,
+	                BTN_PARAM = NUM_PARAMS, FLD_PARAM = BTN_PARAM + 26, MAP_END = FLD_PARAM + 4 }; // 2.8: MIDI-MAP
 	enum InputId {
 		INL_INPUT, INR_INPUT, KICK_INPUT, SNR_INPUT, CH_INPUT, OH_INPUT, BASS_INPUT, MELL_INPUT, MELR_INPUT, PADSL_INPUT,
 		PADSR_INPUT, CLK_INPUT, RST_INPUT,
@@ -151,7 +188,8 @@ struct ChopFx : Module {
 	float filtSeen = -1.f;
 
 	ChopFx() {
-		config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, 0);
+		config(MAP_END, NUM_INPUTS, NUM_OUTPUTS, 0);
+		configMapCtls(this, BTN_PARAM, 26, FLD_PARAM, 4);
 		configParam(IN_PARAM, 0.f, 2.f, 1.f, "Input level", "%", 0.f, 100.f);
 		configParam(OUT_PARAM, 0.f, 2.f, 1.f, "Output level", "%", 0.f, 100.f);
 		configParam(FILT_PARAM, 0.f, 1.f, 0.5f, "DJ filter (left: low-pass, right: high-pass, centre: off)");
@@ -522,7 +560,9 @@ struct ChopFx : Module {
 		json_object_set_new(r, "dj", d);
 		return r;
 	}
+	uint32_t mapCode = 0; // bumped by dataFromJson (MIDI-MAP of the buttons and fields)
 	void dataFromJson(json_t* r) override {
+		mapCode++;
 		auto gi = [&](const char* k, int d) {
 			json_t* j = json_object_get(r, k);
 			return j ? (int) json_integer_value(j) : d;
@@ -730,6 +770,7 @@ struct WirelessLights : widget::TransparentWidget {
 };
 
 struct ChopFxWidget : ModuleWidget, ml::LearnHost {
+	bool mapDone = false;
 	ml::Learner learn;
 	ml::Learner* learner() override { return &learn; }
 	std::string msg;
@@ -1074,6 +1115,11 @@ struct ChopFxWidget : ModuleWidget, ml::LearnHost {
 	}
 
 	void step() override {
+		if (!mapDone && module) { // MIDI-MAP: the buttons and fields get their params (the panel is built by now)
+			if (ChopFx* mm = dynamic_cast<ChopFx*>(module))
+				mapCtls(this, mm, ChopFx::BTN_PARAM, MAP_BTNS, 26, ChopFx::FLD_PARAM, MAP_FLDS, 4, &mm->mapCode);
+			mapDone = true;
+		}
 		ChopFx* m = dynamic_cast<ChopFx*>(module);
 		if (m) {
 			findHost(m);

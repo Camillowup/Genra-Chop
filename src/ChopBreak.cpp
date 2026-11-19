@@ -12,6 +12,37 @@
 #include "ChopBreakLayout.hpp"
 #include "hh/Break.hpp"
 
+// MIDI-MAP (2.8): the buttons and fields by their place on the panel (BTN_PARAM + i, FLD_PARAM + i; only ever append)
+static const MapCtl MAP_BTNS[] = {
+    {cbl::LOAD, "LOAD BREAK"},
+    {cbl::WARP, "WARP"},
+    {cbl::WX, "WARP x2"},
+    {cbl::WD, "WARP /2"},
+    {cbl::VSEL0, "VOICE 1"},
+    {cbl::VSEL1, "VOICE 2"},
+    {cbl::VSEL2, "VOICE 3"},
+    {cbl::VSEL3, "VOICE 4"},
+    {cbl::VSEL4, "VOICE 5"},
+    {cbl::VSEL5, "VOICE 6"},
+    {cbl::VSEL6, "VOICE 7"},
+    {cbl::VSEL7, "VOICE 8"},
+    {cbl::LOCK, "LOCK"},
+    {cbl::UNDO, "UNDO"},
+    {cbl::CLEAR, "CLEAR"},
+    {cbl::COPY, "COPY"},
+    {cbl::PASTE, "PASTE"},
+    {cbl::SAVE, "SAVE"},
+    {cbl::ROLL, "ROLL"},
+    {cbl::MNEW, "NEW"},
+    {cbl::MREV, "REVERSE"},
+};
+static const MapCtl MAP_FLDS[] = {
+    {cbl::MODE, "PLAY MODE"},
+    {cbl::MIX, "MIX"},
+    {cbl::CMODE, "CHOP MODE"},
+};
+static const int NUM_MAP_FLDS = 3;
+
 // the voices on the panel: GENRA CHOP's order of the drum jacks (DRUM_AT), their colours
 static const char* const VNAME[DRUMS] = {"KICK", "SNR", "CH", "OH", "CLAP", "RIM", "TOM", "PERC"};
 static const NVGcolor VCOL[DRUMS] = {nvgRGB(0xc8, 0x31, 0x2b), nvgRGB(0xd6, 0xa6, 0x40), nvgRGB(0x9f, 0xd3, 0xff),
@@ -47,6 +78,7 @@ static void startOwn(std::shared_ptr<Loader> L, int mode, int count, WarpCfg w, 
 }
 
 struct ChopBreak : Module {
+	ml::CtrlIn ctrl[ml::CTRLS]; // 2.8: the own MIDI learn (as GENRA CHOP, ABLAUF, FX)
 	enum ParamId {
 		TUNE_PARAM,
 		DRIVE_PARAM,
@@ -58,7 +90,10 @@ struct ChopBreak : Module {
 		STUTTER_PARAM,
 		SHUFFLE_PARAM,
 		RATE_PARAM,
-		NUM_PARAMS
+		NUM_PARAMS,
+		BTN_PARAM = NUM_PARAMS, // 2.8: MIDI-MAP of the buttons and fields
+		FLD_PARAM = BTN_PARAM + 21,
+		MAP_END = FLD_PARAM + 3
 	};
 	enum InputId { CLK_INPUT, RST_INPUT, ENUMS(TRIG_INPUT, 8), PITCH_INPUT, STUT_INPUT, ROLL_INPUT, NEW_INPUT, NUM_INPUTS };
 	enum OutputId { ENUMS(VOICE_OUTPUT, 8), MIXL_OUTPUT, MIXR_OUTPUT, NUM_OUTPUTS };
@@ -168,7 +203,8 @@ struct ChopBreak : Module {
 	uint32_t tick = 0;
 
 	ChopBreak() {
-		config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, 0);
+		config(MAP_END, NUM_INPUTS, NUM_OUTPUTS, 0);
+		configMapCtls(this, BTN_PARAM, 21, FLD_PARAM, 3);
 		configParam(TUNE_PARAM, -12.f, 12.f, 0.f, "Tune", " semitones")->snapEnabled = true;
 		configParam(DRIVE_PARAM, 0.f, 1.f, 0.f, "Drive", "%", 0.f, 100.f);
 		configParam(LEVEL_PARAM, 0.f, 1.f, 0.8f, "Level", "%", 0.f, 100.f);
@@ -913,7 +949,9 @@ struct ChopBreak : Module {
 		json_object_set_new(r, "dice", jd);
 		return r;
 	}
+	uint32_t mapCode = 0; // bumped by dataFromJson (MIDI-MAP of the buttons and fields)
 	void dataFromJson(json_t* r) override {
+		mapCode++;
 		auto geti = [&](const char* k, int d) {
 			json_t* j = json_object_get(r, k);
 			return j ? (int) json_integer_value(j) : d;
@@ -1212,7 +1250,53 @@ struct FitField : HHField {
 	}
 };
 
-struct ChopBreakWidget : ModuleWidget {
+struct ChopBreakWidget : ModuleWidget, ml::LearnHost {
+	ml::Learner learn;
+	ml::Learner* learner() override { return &learn; }
+	/** The own MIDI learn: every button and field of the tables (by name), right-click: learn. */
+	void learnCtls() {
+		for (widget::Widget* w : children) {
+			for (const MapCtl& c : MAP_BTNS)
+				if (HHButton* x = dynamic_cast<HHButton*>(w))
+					if (x->box.pos.equals(rectOf(c.rect).pos) && x->box.size.equals(rectOf(c.rect).size))
+						addTarget(c.name, x, nullptr);
+			for (int k = 0; k < NUM_MAP_FLDS; k++)
+				if (HHField* y = dynamic_cast<HHField*>(w))
+					if (y->box.pos.equals(rectOf(MAP_FLDS[k].rect).pos) && y->box.size.equals(rectOf(MAP_FLDS[k].rect).size))
+						addTarget(MAP_FLDS[k].name, nullptr, y);
+		}
+	}
+	void addTarget(const std::string& name, HHButton* b, HHField* f) {
+		ml::Target t;
+		t.id = name;
+		t.label = name;
+		t.btn = b;
+		t.field = f;
+		learn.targets.push_back(t);
+		auto own = b ? b->rightMenu : f->rightMenu;
+		auto menu = [=](ui::Menu* mn) {
+			if (own)
+				own(mn);
+			mn->addChild(createMenuLabel(name));
+			learn.appendTargetMenu(mn, name);
+		};
+		if (b) {
+			b->rightMenu = menu;
+			b->learning = [=]() { return learn.learning == name; };
+		}
+		else {
+			f->rightMenu = menu;
+			f->learning = [=]() { return learn.learning == name; };
+		}
+	}
+	void learnKnob(int id) {
+		ml::Target t;
+		t.id = string::f("p%d", id);
+		t.label = module ? module->paramQuantities[id]->getLabel() : t.id;
+		t.param = id;
+		learn.targets.push_back(t);
+	}
+	bool mapDone = false;
 	BrkLcd* lcd = nullptr;
 	int selVoice = -1; // the voice waiting for a pad (by DrumVoice)
 	int chopsSeen = -1;
@@ -1243,10 +1327,24 @@ struct ChopBreakWidget : ModuleWidget {
 	ChopBreakWidget(ChopBreak* m) {
 		setModule(m);
 		setPanel(createPanel(asset::plugin(pluginInstance, "res/ChopBreak.svg")));
+		{ // 2.8: the own MIDI learn (right-click on a button, field or knob)
+			ChopBreak* lm = dynamic_cast<ChopBreak*>(module);
+			learn.kind = "break";
+			learn.module = lm;
+			learn.ins = lm ? lm->ctrl : nullptr;
+			if (lm)
+				learn.restorePorts();
+		}
 		using M = ChopBreak;
 		const NVGcolor GREY = nvgRGB(0x55, 0x53, 0x4f);
-		auto knobS = [&](const float* p, int id) { addParam(createParamCentered<HHKnobSmall>(Vec(p[0], p[1]), m, id)); };
-		auto knobB = [&](const float* p, int id) { addParam(createParamCentered<HHKnob>(Vec(p[0], p[1]), m, id)); };
+		auto knobS = [&](const float* p, int id) {
+			addParam(createParamCentered<ml::LearnKnob<HHKnobSmall>>(Vec(p[0], p[1]), m, id));
+			learnKnob(id);
+		};
+		auto knobB = [&](const float* p, int id) {
+			addParam(createParamCentered<ml::LearnKnob<HHKnob>>(Vec(p[0], p[1]), m, id));
+			learnKnob(id);
+		};
 		knobS(cbl::TUNE, M::TUNE_PARAM);
 		knobS(cbl::DRIVE, M::DRIVE_PARAM);
 		knobS(cbl::LEVEL, M::LEVEL_PARAM);
@@ -1491,6 +1589,14 @@ struct ChopBreakWidget : ModuleWidget {
 	}
 
 	void step() override {
+		learn.step();
+		if (!mapDone && module) { // MIDI-MAP: the buttons and fields get their params (the panel is built by now)
+			if (ChopBreak* mm = dynamic_cast<ChopBreak*>(module))
+				mapCtls(this, mm, ChopBreak::BTN_PARAM, MAP_BTNS, 21, ChopBreak::FLD_PARAM, MAP_FLDS, 3, &mm->mapCode);
+			if (module)
+				learnCtls();
+			mapDone = true;
+		}
 		if (ChopBreak* m = dynamic_cast<ChopBreak*>(module)) {
 			m->collectTrash();
 			findHost(m);
@@ -1544,6 +1650,7 @@ struct ChopBreakWidget : ModuleWidget {
 		ChopBreak* m = dynamic_cast<ChopBreak*>(module);
 		if (!m)
 			return;
+		learn.appendModuleMenu(menu, [=](const std::string& s) { say(s); }); // 2.8: the own MIDI learn
 		menu->addChild(new MenuSeparator);
 		menu->addChild(createMenuLabel("Break"));
 		menu->addChild(createMenuItem("Load break…", "", [=]() { m->loadBreak(); }));

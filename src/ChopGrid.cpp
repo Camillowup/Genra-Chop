@@ -14,6 +14,27 @@
 #include <algorithm>
 #include <cstring>
 
+// MIDI-MAP (2.8): the buttons and fields by their place on the panel (BTN_PARAM + i, FLD_PARAM + i; only ever append)
+static const MapCtl MAP_BTNS[] = {
+    {ghl::TRK0, "TRACK 1"},
+    {ghl::TRK1, "TRACK 2"},
+    {ghl::TRK2, "TRACK 3"},
+    {ghl::TRK3, "TRACK 4"},
+    {ghl::TRK4, "TRACK 5"},
+    {ghl::AUTO, "AUTO"},
+    {ghl::SNAP, "SNAP"},
+    {ghl::FOLLOW, "FOLLOW"},
+    {ghl::UNDO, "UNDO"},
+    {ghl::REDO, "REDO"},
+    {ghl::COPY, "COPY"},
+    {ghl::PASTE, "PASTE"},
+    {ghl::CLEAR, "CLEAR"},
+    {ghl::GEN, "GEN"},
+    {ghl::REC, "REC"},
+};
+static const MapCtl* const MAP_FLDS = nullptr;
+static const int NUM_MAP_FLDS = 0;
+
 using namespace hh;
 
 static const NVGcolor TRACK_COL[NUM_TRACKS] = {nvgRGB(0x8a, 0x8f, 0xb8), nvgRGB(0x9f, 0xbf, 0x5a), nvgRGB(0x5f, 0xb7, 0xb0),
@@ -408,7 +429,9 @@ static bool readMidi(const std::vector<uint8_t>& b, Pattern& P, std::string& err
 
 // ================================================================ the module
 struct ChopGrid : Module {
-	enum ParamId { BAR_PARAM, ZOOM_PARAM, PITCH_PARAM, VEL_PARAM, LEN_PARAM, CHANCE_PARAM, NUM_PARAMS };
+	ml::CtrlIn ctrl[ml::CTRLS]; // 2.8: the own MIDI learn (as GENRA CHOP, ABLAUF, FX)
+	enum ParamId { BAR_PARAM, ZOOM_PARAM, PITCH_PARAM, VEL_PARAM, LEN_PARAM, CHANCE_PARAM, NUM_PARAMS,
+	                BTN_PARAM = NUM_PARAMS, FLD_PARAM = BTN_PARAM + 15, MAP_END = FLD_PARAM }; // 2.8: MIDI-MAP
 	int track = T_BASS;
 	bool autoScroll = true;
 	int snap = 1;  // 0 off, 1 scale, 2 chord
@@ -430,7 +453,8 @@ struct ChopGrid : Module {
 	std::atomic<uint32_t> recHead{0}, recTail{0};
 
 	ChopGrid() {
-		config(NUM_PARAMS, 0, 0, 0);
+		config(MAP_END, 0, 0, 0);
+		configMapCtls(this, BTN_PARAM, 15, FLD_PARAM, 0);
 		configParam(BAR_PARAM, 1.f, 4.f, 1.f, "First visible bar")->snapEnabled = true;
 		configSwitch(ZOOM_PARAM, 0.f, 2.f, 2.f, "Visible bars", {"1 bar", "2 bars", "4 bars"});
 		configParam(PITCH_PARAM, 0.f, 1.f, 0.15f, "Pitch range (piano roll)");
@@ -470,7 +494,9 @@ struct ChopGrid : Module {
 		json_object_set_new(r, "midiIn", midiIn.toJson());
 		return r;
 	}
+	uint32_t mapCode = 0; // bumped by dataFromJson (MIDI-MAP of the buttons and fields)
 	void dataFromJson(json_t* r) override {
+		mapCode++;
 		auto gi = [&](const char* k, int d) {
 			json_t* j = json_object_get(r, k);
 			return j ? (int) json_integer_value(j) : d;
@@ -2035,7 +2061,65 @@ struct LinkLed : widget::Widget {
 	}
 };
 
-struct ChopGridWidget : ModuleWidget {
+struct ChopGridWidget : ModuleWidget, ml::LearnHost {
+	ml::Learner learn;
+	ml::Learner* learner() override { return &learn; }
+	/** The own MIDI learn: every button and field of the tables (by name), right-click: learn. */
+	void learnCtls() {
+		for (widget::Widget* w : children) {
+			for (const MapCtl& c : MAP_BTNS)
+				if (HHButton* x = dynamic_cast<HHButton*>(w))
+					if (x->box.pos.equals(rectOf(c.rect).pos) && x->box.size.equals(rectOf(c.rect).size))
+						addTarget(c.name, x, nullptr);
+			for (int k = 0; k < NUM_MAP_FLDS; k++)
+				if (HHField* y = dynamic_cast<HHField*>(w))
+					if (y->box.pos.equals(rectOf(MAP_FLDS[k].rect).pos) && y->box.size.equals(rectOf(MAP_FLDS[k].rect).size))
+						addTarget(MAP_FLDS[k].name, nullptr, y);
+		}
+	}
+	void addTarget(const std::string& name, HHButton* b, HHField* f) {
+		ml::Target t;
+		t.id = name;
+		t.label = name;
+		t.btn = b;
+		t.field = f;
+		learn.targets.push_back(t);
+		auto own = b ? b->rightMenu : f->rightMenu;
+		auto menu = [=](ui::Menu* mn) {
+			if (own)
+				own(mn);
+			mn->addChild(createMenuLabel(name));
+			learn.appendTargetMenu(mn, name);
+		};
+		if (b) {
+			b->rightMenu = menu;
+			b->learning = [=]() { return learn.learning == name; };
+		}
+		else {
+			f->rightMenu = menu;
+			f->learning = [=]() { return learn.learning == name; };
+		}
+	}
+	void learnKnob(int id) {
+		ml::Target t;
+		t.id = string::f("p%d", id);
+		t.label = module ? module->paramQuantities[id]->getLabel() : t.id;
+		t.param = id;
+		learn.targets.push_back(t);
+	}
+	bool mapDone = false;
+	void step() override {
+		learn.step();
+		if (!mapDone && module) { // MIDI-MAP: the buttons and fields get their params (the panel is built by now)
+			if (ChopGrid* mm = dynamic_cast<ChopGrid*>(module))
+				mapCtls(this, mm, ChopGrid::BTN_PARAM, MAP_BTNS, 15, ChopGrid::FLD_PARAM, MAP_FLDS, 0, &mm->mapCode);
+			if (module)
+				learnCtls();
+			mapDone = true;
+		}
+		ModuleWidget::step();
+	}
+
 	GridView* grid = nullptr;
 
 	template <typename T>
@@ -2057,6 +2141,14 @@ struct ChopGridWidget : ModuleWidget {
 	ChopGridWidget(ChopGrid* m) {
 		setModule(m);
 		setPanel(createPanel(asset::plugin(pluginInstance, "res/ChopGrid.svg")));
+		{ // 2.8: the own MIDI learn (right-click on a button, field or knob)
+			ChopGrid* lm = dynamic_cast<ChopGrid*>(module);
+			learn.kind = "grid";
+			learn.module = lm;
+			learn.ins = lm ? lm->ctrl : nullptr;
+			if (lm)
+				learn.restorePorts();
+		}
 		grid = at<GridView>(ghl::GRID);
 		grid->m = m;
 		GridView* g = grid;
@@ -2070,17 +2162,23 @@ struct ChopGridWidget : ModuleWidget {
 			HHButton* b = button(TR[k], TN[k], C_GRAPH, 7.f, [=]() { g->selectTrack(k); });
 			b->lit = [=]() { return m && m->track == k; };
 		}
-		addParam(createParamCentered<HHKnob>(Vec(ghl::BAR[0], ghl::BAR[1]), m, ChopGrid::BAR_PARAM));
-		addParam(createParamCentered<HHKnob>(Vec(ghl::ZOOM[0], ghl::ZOOM[1]), m, ChopGrid::ZOOM_PARAM));
-		addParam(createParamCentered<HHKnob>(Vec(ghl::PITCH[0], ghl::PITCH[1]), m, ChopGrid::PITCH_PARAM));
+		addParam(createParamCentered<ml::LearnKnob<HHKnob>>(Vec(ghl::BAR[0], ghl::BAR[1]), m, ChopGrid::BAR_PARAM));
+		learnKnob(ChopGrid::BAR_PARAM);
+		addParam(createParamCentered<ml::LearnKnob<HHKnob>>(Vec(ghl::ZOOM[0], ghl::ZOOM[1]), m, ChopGrid::ZOOM_PARAM));
+		learnKnob(ChopGrid::ZOOM_PARAM);
+		addParam(createParamCentered<ml::LearnKnob<HHKnob>>(Vec(ghl::PITCH[0], ghl::PITCH[1]), m, ChopGrid::PITCH_PARAM));
+		learnKnob(ChopGrid::PITCH_PARAM);
 		HHButton* au = button(ghl::AUTO, "AUTO", C_GRAPH, 7.f, [=]() {
 			if (m)
 				m->autoScroll = !m->autoScroll;
 		});
 		au->lit = [=]() { return m && m->autoScroll; };
-		addParam(createParamCentered<HHKnob>(Vec(ghl::VEL[0], ghl::VEL[1]), m, ChopGrid::VEL_PARAM));
-		addParam(createParamCentered<HHKnob>(Vec(ghl::LEN[0], ghl::LEN[1]), m, ChopGrid::LEN_PARAM));
-		addParam(createParamCentered<HHKnob>(Vec(ghl::CHANCE[0], ghl::CHANCE[1]), m, ChopGrid::CHANCE_PARAM));
+		addParam(createParamCentered<ml::LearnKnob<HHKnob>>(Vec(ghl::VEL[0], ghl::VEL[1]), m, ChopGrid::VEL_PARAM));
+		learnKnob(ChopGrid::VEL_PARAM);
+		addParam(createParamCentered<ml::LearnKnob<HHKnob>>(Vec(ghl::LEN[0], ghl::LEN[1]), m, ChopGrid::LEN_PARAM));
+		learnKnob(ChopGrid::LEN_PARAM);
+		addParam(createParamCentered<ml::LearnKnob<HHKnob>>(Vec(ghl::CHANCE[0], ghl::CHANCE[1]), m, ChopGrid::CHANCE_PARAM));
+		learnKnob(ChopGrid::CHANCE_PARAM);
 		button(ghl::SNAP, "SNAP", C_GRAPH, 7.f, [=]() {
 			if (!m)
 				return;
@@ -2110,6 +2208,7 @@ struct ChopGridWidget : ModuleWidget {
 		ChopGrid* m = dynamic_cast<ChopGrid*>(module);
 		if (!m)
 			return;
+		learn.appendModuleMenu(menu, [](const std::string&) {}); // 2.8: the own MIDI learn
 		GridView* g = grid;
 		menu->addChild(new MenuSeparator);
 		menu->addChild(createMenuLabel("Connection"));

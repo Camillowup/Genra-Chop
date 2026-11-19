@@ -8,6 +8,50 @@
 #include "MidiLearn.hpp"
 #include "hh/Song.hpp"
 
+// MIDI-MAP (2.8): the buttons and fields by their place on the panel (BTN_PARAM + i, FLD_PARAM + i; only ever append)
+static const MapCtl MAP_BTNS[] = {
+    {hhl::STOP, "STOP"},
+    {hhl::PLAY, "PLAY"},
+    {hhl::SPLAY, "SAMPLE"},
+    {hhl::BANK0, "BANK A"},
+    {hhl::BANK1, "BANK B"},
+    {hhl::BANK2, "BANK C"},
+    {hhl::BANK3, "BANK D"},
+    {hhl::LOAD, "LOAD SAMPLE"},
+    {hhl::REC, "REC"},
+    {hhl::LOCK, "LOCK"},
+    {hhl::ROOT, "ROOT"},
+    {hhl::UNDO, "UNDO"},
+    {hhl::SAVE, "SAVE"},
+    {hhl::CLEAR, "CLEAR"},
+    {hhl::NEWALL, "NEW ALL"},
+    {hhl::WARP, "WARP"},
+    {hhl::WX, "WARP x2"},
+    {hhl::WD, "WARP /2"},
+    {hhl::LOOP, "LOOP"},
+    {hhl::TNEW0, "NEW DRUMS"},
+    {hhl::TNEW1, "NEW BASS"},
+    {hhl::TNEW2, "NEW MELODY"},
+    {hhl::TNEW3, "NEW PADS"},
+    {hhl::TCLR0, "CLEAR DRUMS"},
+    {hhl::TCLR1, "CLEAR BASS"},
+    {hhl::TCLR2, "CLEAR MELODY"},
+    {hhl::TCLR3, "CLEAR PADS"},
+};
+static const MapCtl MAP_FLDS[] = {
+    {hhl::ERA, "ERA"},
+    {hhl::STYLE, "STYLE"},
+    {hhl::KEY, "KEY"},
+    {hhl::MODE, "MODE"},
+    {hhl::CPAT, "CHOP PATTERN"},
+    {hhl::WMODE, "WARP MODE"},
+    {hhl::LBARS, "LOOP BARS"},
+    {hhl::TMODE0, "DRUMS MODE"},
+    {hhl::TMODE1, "BASS MODE"},
+    {hhl::TMODE2, "MELODY MODE"},
+    {hhl::TMODE3, "PADS MODE"},
+};
+
 struct HHPad : widget::OpaqueWidget {
 	GenraChop* module = nullptr;
 	int slot = 0; // 0..15 on the panel; the chop: bank * 16 + slot
@@ -411,6 +455,7 @@ struct WarpBpm : widget::Widget {
 };
 
 struct GenraChopWidget : ModuleWidget, ml::LearnHost {
+	bool mapDone = false;
 	ml::Learner learn;
 	HHLcd* lcd = nullptr;
 	float takenCheck = 0.f;
@@ -900,6 +945,11 @@ struct GenraChopWidget : ModuleWidget, ml::LearnHost {
 	}
 
 	void step() override {
+		if (!mapDone && module) { // MIDI-MAP: the buttons and fields get their params (the panel is built by now)
+			if (GenraChop* mm = dynamic_cast<GenraChop*>(module))
+				mapCtls(this, mm, GenraChop::BTN_PARAM, MAP_BTNS, 27, GenraChop::FLD_PARAM, MAP_FLDS, 11, &mm->mapCode);
+			mapDone = true;
+		}
 		if (GenraChop* m = dynamic_cast<GenraChop*>(module)) {
 			m->collectTrash();
 			learn.step();

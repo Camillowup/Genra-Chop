@@ -3,6 +3,14 @@
 Was in welcher Version dazukam (neueste zuerst). Bis 2.4.0 lag GENRA CHOP im Repo von GENRA Test
 (`Camillowup/testmodulesvcv`, Ordner `genra-chop/`, davor als GENRA HipHop).
 
+### GENRA CHOP 2.8.0
+- **Rack-MIDI-MAP für alle Tasten und Felder** in allen fünf Modulen (CHOP, ABLAUF, BREAK, FX, GRID): in MIDI-MAP auf
+  die Taste oder das Feld klicken, dann den Controller bewegen. Ein Knopf drückt die Taste (wie ein Klick), ein Regler
+  blättert durch das Feld (es übernimmt nach 0,3 s Ruhe). ABLAUF: auch PATT / SONG. Jede Taste und jedes Feld hat dafür
+  einen eigenen Parameter (nach den Reglern). Pads, Listen, Wellenform und GRID-Editor bleiben aussen vor.
+- **Eigenes MIDI-Learn auch in BREAK und GRID** (wie in CHOP, ABLAUF und FX): Rechtsklick auf Taste, Feld oder Regler →
+  lernen; Controller im Rechtsklick-Menü des Moduls.
+
 ### GENRA CHOP 2.7.0
 - **GENRA CHOP BREAK (neu, 36 HP):** ein Drum-Break zum Reinladen und Verwursten. Schnitt an den Schlägen (bis 16
   Chops), jede Drum-Stimme aus dem Klang erkannt (oder von Hand: Stimme antippen, dann Pad); spielt auf die Drums von
